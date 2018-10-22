@@ -24,7 +24,7 @@
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
 (asdf:defsystem #:static-dispatch
-  :description "Describe generic-overload here"
+  :description "Static generic function dispatch for Common Lisp."
   :author "Alexander Gutev"
   :license "MIT"
   :serial t
@@ -36,9 +36,7 @@
 	       :anaphora
 	       :cl-arrows
 	       :optima
-	       :named-readtables
 	       :closer-mop
 
-	       :cl-environments
-	       :merge-packages
-	       :agutil))
+	       :agutil
+	       :cl-environments))

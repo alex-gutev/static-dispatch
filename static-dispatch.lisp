@@ -25,8 +25,6 @@
 
 (in-package #:static-dispatch)
 
-(in-readtable all-lambda-syntax)
-
 
 (defclass method-body ()
   ((body
@@ -93,7 +91,7 @@
   (destructuring-bind (type &rest fns) decl
     (values
      :function
-     (mapcar #`(,a1 dispatch ,type) fns))))
+     (mapcar (rcurry #'list 'dispatch type) fns))))
 
 
 (defun gf-compiler-macro (whole &optional env)
@@ -158,26 +156,33 @@
 	 (is-t? (specializer)
 	   (match specializer
 	     ((class class)
-	      (eq (class-name specializer) t)))))
+	      (eq (class-name specializer) t))))
+
+	 (next-method-arg (method)
+	   (cons (car method) (cddr method))))
 
     (match types
       ((list* 't rest)
        (when (every (compose #'is-t? #'cadr) methods)
 	 (match-methods
-	  (mapcar #L(cons (car %1) (cdr %1)) methods)
+	  (mapcar #'next-method-arg methods)
 	  rest)))
 
       ((list* type rest)
        (match-methods
-	(mapcar #L(cons (car %1) (cddr %1))
-		(remove type methods :test-not #'applicable? :key #'cadr))
+	(->> (remove type methods :test-not #'applicable? :key #'cadr)
+	     (mapcar #'next-method-arg))
 	rest))
 
       (nil (mapcar #'car methods)))))
 
 (defun sort-methods (methods lambda-list precedence)
-  (let ((methods (mapcar #L(cons %1 (order-by-precedence lambda-list precedence %1)) methods)))
-    (mapcar #'car (sort methods #'specializer< :key #'cdr))))
+  (flet ((method-specializers (specializer)
+	   (cons specializer (order-by-precedence lambda-list precedence specializer))))
+
+    (-<> (mapcar #'method-specializers methods)
+	 (sort <> #'specializer< :key #'cdr)
+	 (mapcar #'car <>))))
 
 (defun specializer< (s1 s2)
   (multiple-value-match (values s1 s2)
