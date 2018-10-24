@@ -33,12 +33,6 @@
     :documentation
     "The method function body.")
 
-   (lambda-list
-    :initarg :lambda-list
-    :accessor lambda-list
-    :documentation
-    "The methods lambda-list, as a `LAMBDA-LIST' object.")
-
    (function-name
     :initarg :function-name
     :initform nil
@@ -57,32 +51,45 @@
 (defun gf-method (gf-name specializers)
   (aand (gf-methods gf-name) (gethash specializers it)))
 
-(defun ensure-method-info (gf-name lambda-list &optional body)
-  (with-slots (specializers) lambda-list
-    (-<> (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal))
-	 (ensure-gethash specializers <>
-			 (make-instance 'method-body
-					:function-name (gensym (symbol-name gf-name))
-					:lambda-list lambda-list
-					:body body)))))
+(defun ensure-method-info (gf-name specializers &optional body)
+  (-<> (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal))
+       (ensure-gethash specializers <>
+		       (make-instance 'method-body
+				      :function-name (gensym (symbol-name gf-name))
+				      :body body))))
 
 
 (defmacro defmethod (name &rest args)
-  (multiple-value-bind (lambda-list body) (parse-method args)
-    (with-slots (function-name) (ensure-method-info name lambda-list body)
+  (multiple-value-bind (specializers lambda-list body) (parse-method args)
+    (with-slots (function-name) (ensure-method-info name specializers body)
       `(progn
 	 (c2mop:defmethod ,name ,@args)
 
 	 (eval-when (:compile-toplevel :load-toplevel :execute)
 	   (setf (compiler-macro-function ',name) #'gf-compiler-macro))
 
-	 (defun ,function-name ,(create-lambda-list lambda-list)
-	   ,@body)))))
+	 (defun ,function-name ,lambda-list ,@body)))))
 
 (defun parse-method (args)
   (match args
     ((list* (guard lambda-list #'listp) body)
-     (values (parse-generic-lambda-list lambda-list) body))))
+     (multiple-value-call #'values
+       (parse-method-lambda-list lambda-list)
+       body))))
+
+(defun parse-method-lambda-list (lambda-list)
+  (iter
+    (for (x . rest) on lambda-list)
+    (match x
+      ((guard x (member x lambda-list-keywords))
+       (return (values specializers (append required (cons x rest)))))
+
+      ((or (list x specializer)
+	   x)
+       (collect x into required)
+       (collect (or specializer t) into specializers)))
+
+    (finally (return (values specializers required)))))
 
 
 ;;; Compiler Macro

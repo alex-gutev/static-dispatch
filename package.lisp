@@ -1,4 +1,4 @@
-;;;; static-dispatch.asd
+;;;; package.lisp
 ;;;;
 ;;;; Copyright 2018 Alexander Gutev
 ;;;;
@@ -23,20 +23,24 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-(asdf:defsystem #:static-dispatch
-  :description "Static generic function dispatch for Common Lisp."
-  :author "Alexander Gutev"
-  :license "MIT"
-  :serial t
-  :components ((:file "package")
-	       (:file "static-dispatch"))
+(agutil:define-merged-package :closer-environments
+    :cl-environments
+  :closer-common-lisp)
 
-  :depends-on (:alexandria
-	       :anaphora
-	       :cl-arrows
-	       :iterate
-	       :trivia
-	       :closer-mop
+(defpackage #:static-dispatch
+  (:use :alexandria
+	:anaphora
+	:cl-arrows
+	:trivia
+	:iterate
+	:closer-environments)
 
-	       :agutil
-	       :cl-environments))
+  (:shadow :defmethod)
+
+  (:export :defmethod
+	   :dispatch
+	   :static))
+
+(agutil:define-merged-package :static-dispatch-cl
+    :closer-environments
+  :static-dispatch)
