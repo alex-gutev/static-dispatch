@@ -151,21 +151,28 @@
   (or
    (match whole
      ((cons name args)
-      (when (should-overload? name env)
-	(static-overload name args))))
+      (awhen (static-dispatch? name env)
+	(static-overload name args it))))
    whole))
 
-(defun should-overload? (name env)
-  "Returns true if the generic function NAME should be statically
-   dispatched. A generic function should be statically dispatched when
-   its DISPATCH-TYPE is STATIC, in the environment ENV."
+(defun static-dispatch? (name env)
+  "Returns a symbol indicating the type of optimization which should
+   be performed by the compiler macro for the generic function
+   NAME. OVERLOAD is returned if the generic function should be
+   dispatched statically, INLINE if the body of the methods should be
+   additionally inlined, NIL if no optimizations should be performed."
 
-  (eq 'static (cdr (assoc 'dispatch (nth-value 2 (function-information name env))))))
+  (let ((decl (nth-value 2 (function-information name env))))
+    (or (and (eq (cdr (assoc 'inline decl)) 'inline) 'inline)
+	(and (eq (cdr (assoc 'dispatch decl)) 'static) 'overload))))
 
-(defun static-overload (gf-name args)
+(defun static-overload (gf-name args dispatch-type)
   "Returns a MATCH form which matches the arguments ARGS to the method
    specializers, of the generic function GF-NAME, and calls the most
-   specific method function."
+   specific method function. If TYPE is OVERLOAD the bodies of the
+   match clauses call the method functions, otherwise if TYPE is
+   INLINE the bodies of the method functions are inserted directly
+   into the match clauses."
 
   (let* ((gf (fdefinition gf-name)))
 
@@ -182,10 +189,22 @@
 
 	(labels ((make-clause (method)
 		   (destructuring-bind (method . specializers) method
-		     (list
-		      (mapcar #'specializer-pattern specializers)
-		      `(locally (declare ,@(mapcar (curry #'list 'type) method gensyms))
-			 (,(function-name (gf-method gf-name method)) ,@gensyms)))))
+		     (let ((lambda-list (method-lambda-list method))
+			   (cl-specializers (mapcar #'specializer->cl (method-specializers method))))
+		       (list
+			(mapcar #'specializer-pattern specializers)
+			(make-match-body lambda-list cl-specializers)))))
+
+		 (make-match-body (lambda-list specializers)
+		   (ecase dispatch-type
+		     (overload
+		      `(locally (declare ,@(mapcar (curry #'list 'type) specializers gensyms))
+			 (,(function-name (gf-method gf-name specializers)) ,@gensyms)))
+
+		     (inline
+		      `(destructuring-bind ,lambda-list (list ,@gensyms)
+			 (declare ,@(mapcar (curry #'list 'type) specializers lambda-list))
+			 ,@(body (gf-method gf-name specializers))))))
 
 		 (specializer-pattern (specializer)
 		   (match (specializer->cl specializer)
@@ -215,15 +234,13 @@
 (defun order-method-specializers (precedence methods)
   "Orders the specializers of each method in METHODS, by the order
    specified in PRECEDENCE. Returns an association list where each key
-   is the original specializer list of a method, converted to CL
-   notation, and the corresponding value is the method's specializer
-   list in argument precedence order."
+   is the method and the corresponding value is the method's
+   specializer list in argument precedence order."
 
   (iter (for method in methods)
-	(with-accessors ((specializers method-specializers)) method
-	  (collect
-	      (cons (mapcar #'specializer->cl specializers)
-		    (order-by-precedence precedence specializers))))))
+	(collect
+	    (cons method
+		  (order-by-precedence precedence (method-specializers method))))))
 
 (defun specializer->cl (specializer)
   "Returns the CL representation of a specializer as used in a
