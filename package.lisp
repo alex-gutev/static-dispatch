@@ -33,6 +33,8 @@
 	:cl-arrows
 	:trivia
 	:iterate
+
+	:agutil
 	:closer-environments)
 
   (:shadow :defmethod)

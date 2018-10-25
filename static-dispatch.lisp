@@ -39,25 +39,43 @@
     :accessor function-name
     :documentation
     "Symbol naming a non-generic function which implements the
-     method. This function has the same names")))
+     method."))
+
+  (:documentation
+   "Stores the body of a method and the name of a non-generic function
+    which contains the method's body."))
 
 
 (defvar *generic-function-table* (make-hash-table :test #'eq)
   "Hash table mapping generic functions to a list of methods.")
 
 (defun gf-methods (gf-name)
+  "Returns the method information for the generic function GF-NAME. A
+   hash-table mapping lists of specializers to `METHOD-BODY' objects
+   is returned."
+
   (gethash gf-name *generic-function-table*))
 
 (defun gf-method (gf-name specializers)
+  "Returns the `METHOD-BODY', of the method with specializer list
+   SPECIALIZERS, of the generic function GF-NAME."
+
   (aand (gf-methods gf-name) (gethash specializers it)))
 
 (defun ensure-method-info (gf-name specializers &optional body)
+  "Ensures that the method table, withing *GENERIC-FUNCTION-TABLE*, of
+   the generic function GF-NAME contains a method with specializers
+   SPECIALIZERS and body BODY. If the table does not contain a method
+   for those specializers, a new `METHOD-BODY' object is created."
+
   (-<> (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal))
        (ensure-gethash specializers <>
 		       (make-instance 'method-body
 				      :function-name (gensym (symbol-name gf-name))
 				      :body body))))
 
+
+;;;; DEFMETHOD macro
 
 (defmacro defmethod (name &rest args)
   (multiple-value-bind (specializers lambda-list body) (parse-method args)
@@ -92,7 +110,7 @@
     (finally (return (values specializers required)))))
 
 
-;;; Compiler Macro
+;;;; Compiler Macro
 
 (define-declaration dispatch (decl)
   (destructuring-bind (type &rest fns) decl
@@ -102,19 +120,29 @@
 
 
 (defun gf-compiler-macro (whole &optional env)
+  "Compiler macro function for statically dispatched generic
+   functions."
+
   (or
    (match whole
      ((cons name args)
       (when (should-overload? name env)
-	(static-overload name args env))))
+	(static-overload name args))))
    whole))
 
 (defun should-overload? (name env)
+  "Returns true if the generic function NAME should be statically
+   dispatched. A generic function should be statically dispatched when
+   its DISPATCH-TYPE is STATIC, in the environment ENV."
+
   (eq 'static (cdr (assoc 'dispatch (nth-value 2 (function-information name env))))))
 
-(defun static-overload (gf-name args env)
-  (let* ((gf (fdefinition gf-name))
-	 (types (get-types args env)))
+(defun static-overload (gf-name args)
+  "Returns a MATCH form which matches the arguments ARGS to the method
+   specializers, of the generic function GF-NAME, and calls the most
+   specific method function."
+
+  (let* ((gf (fdefinition gf-name)))
 
     (with-accessors
 	  ((lambda-list generic-function-lambda-list)
@@ -122,77 +150,78 @@
 	   (methods generic-function-methods))
 	gf
 
-      (awhen (find-methods lambda-list precedence types methods)
-	(when-let ((method (gf-method gf-name (mapcar #'class-name (first it)))))
-	  `(,(function-name method) ,@args))))))
+      (let* ((precedence (precedence-order lambda-list precedence))
+	     (gensyms (repeat-function #'gensym (length args)))
+	     (match-gensyms (order-by-precedence precedence gensyms))
+	     (methods (sort-methods (order-method-specializers precedence methods))))
+
+	(labels ((make-clause (method)
+		   (destructuring-bind (method . specializers) method
+		     (list
+		      (mapcar #'specializer-pattern specializers)
+		      `(locally (declare ,@(mapcar (curry #'list 'type) method gensyms))
+			 (,(function-name (gf-method gf-name method)) ,@gensyms)))))
+
+		 (specializer-pattern (specializer)
+		   (list 'type (class-name specializer))))
 
 
-(defun get-types (args env)
-  (mapcar (rcurry #'get-type env) args))
-
-(defun get-type (thing env)
-  (or
-   (match thing
-     ((type symbol)
-      (cdr (assoc 'type (nth-value 2 (variable-information thing env)))))
-
-     ;; TODO: Expand macros and check for constant values
-     ((list* 'the type _)
-      type))
-
-   t))
+	  `(let ,(mapcar #'list gensyms args)
+	     (match* ,match-gensyms
+	       ,@(mapcar #'make-clause methods))))))))
 
 
-(defun find-methods (lambda-list precedence types methods)
-  (flet ((method-specializers (method)
-	   (with-accessors ((specializers method-specializers)) method
-	     (cons specializers (order-by-precedence lambda-list precedence specializers)))))
-    (let ((types (order-by-precedence lambda-list precedence types))
-	  (methods (mapcar #'method-specializers methods)))
+(defun precedence-order (lambda-list precedence)
+  "Returns a list of the generic function arguments in argument
+   precedence order (PRECEDENCE). Each element in the list is the
+   index of the argument within LAMBDA-LIST."
 
-      ;;; Sort methods by precedence
-      (sort-methods (match-methods methods types) lambda-list precedence))))
+  (mapcar (rcurry #'position lambda-list) precedence))
 
-(defun match-methods (methods types)
-  ;; Ignore EQL specializers for now
-  (flet ((applicable? (type specializer)
-	   (match specializer
-	     ((class class)
-	      (subtypep type (class-name specializer)))))
+(defun order-by-precedence (precedence args)
+  "Orders the list ARGS by the order specified in PRECEDENCE."
 
-	 (is-t? (specializer)
-	   (match specializer
-	     ((class class)
-	      (eq (class-name specializer) t))))
+  (mapcar (curry #'elt args) precedence))
 
-	 (next-method-arg (method)
-	   (cons (car method) (cddr method))))
+(defun order-method-specializers (precedence methods)
+  "Orders the specializers of each method in METHODS, by the order
+   specified in PRECEDENCE. Returns an association list where each key
+   is the original specializer list of a method, converted to CL
+   notation, and the corresponding value is the method's specializer
+   list in argument precedence order."
 
-    (match types
-      ((list* 't rest)
-       (when (every (compose #'is-t? #'cadr) methods)
-	 (match-methods
-	  (mapcar #'next-method-arg methods)
-	  rest)))
+  (iter (for method in methods)
+	(with-accessors ((specializers method-specializers)) method
+	  (collect
+	      (cons (mapcar #'specializer->cl specializers)
+		    (order-by-precedence precedence specializers))))))
 
-      ((list* type rest)
-       (match-methods
-	(->> (remove type methods :test-not #'applicable? :key #'cadr)
-	     (mapcar #'next-method-arg))
-	rest))
+(defun specializer->cl (specializer)
+  "Returns the CL representation of a specializer as used in a
+   DEFMETHOD lambda-list. `CLASS' specializers are replaced with their
+   CLASS-NAME and EQL specializers are replaced with `(EQL
+   ,EQL-SPECIALIZER-OBJECT). The EQL-SPECIALIZER-OBJECT is the value
+   to which the EQL object form was evaluated not the form itself."
 
-      (nil (mapcar #'car methods)))))
+  (match specializer
+    ((class class)
+     (class-name specializer))
 
-(defun sort-methods (methods lambda-list precedence)
-  (flet ((method-specializers (specializer)
-	   (cons specializer (order-by-precedence lambda-list precedence specializer))))
+    ((class eql-specializer)
+     `(eql ',(eql-specializer-object specializer)))))
 
-    (-<> (mapcar #'method-specializers methods)
-	 (sort <> #'specializer< :key #'cdr)
-	 (mapcar #'car <>))))
+
+(defun sort-methods (methods)
+  "Sorts METHODS in order of applicability based on their
+   specializers."
+
+  (sort methods #'specializer< :key #'cdr))
 
 (defun specializer< (s1 s2)
-  (multiple-value-match (values s1 s2)
+  "Specializer comparison function. Returns true if the specializer
+   list S1 should be ordered after S2."
+
+  (match* (s1 s2)
     (((list* class1 s1)
       (list* class2 s2))
 
@@ -204,7 +233,3 @@
 	 ((eq class1 class2) (specializer< s1 s2)))))
 
     ((_ _) t)))
-
-(defun order-by-precedence (lambda-list precedence args)
-  (let ((args (mapcar #'cons lambda-list args)))
-    (mapcar (compose #'cdr (rcurry #'assoc args)) precedence)))
