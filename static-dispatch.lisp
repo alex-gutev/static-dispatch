@@ -56,11 +56,24 @@
 
   (gethash gf-name *generic-function-table*))
 
+(defun ensure-gf-methods (gf-name)
+  "Ensures that a method table for the generic function GF-NAME
+   exists, in *GENERIC-FUNCTION-TABLE*."
+
+  (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal)))
+
 (defun gf-method (gf-name specializers)
   "Returns the `METHOD-BODY', of the method with specializer list
    SPECIALIZERS, of the generic function GF-NAME."
 
   (aand (gf-methods gf-name) (gethash specializers it)))
+
+(defun (setf gf-method) (value gf-name specializers)
+  "Sets the method info, to VALUE, for the method with specializer
+   list SPECIALIZERS, of the generic function GF-NAME."
+
+  (setf (gethash specializers (ensure-gf-methods gf-name))
+	value))
 
 (defun ensure-method-info (gf-name specializers &optional body)
   "Ensures that the method table, withing *GENERIC-FUNCTION-TABLE*, of
@@ -68,25 +81,30 @@
    SPECIALIZERS and body BODY. If the table does not contain a method
    for those specializers, a new `METHOD-BODY' object is created."
 
-  (-<> (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal))
-       (ensure-gethash specializers <>
-		       (make-instance 'method-body
-				      :function-name (gensym (symbol-name gf-name))
-				      :body body))))
+  (aprog1
+      (ensure-gethash specializers (ensure-gf-methods gf-name)
+		      (make-instance 'method-body
+				     :function-name (gensym (symbol-name gf-name))))
+    (setf (body it) body)))
 
 
 ;;;; DEFMETHOD macro
 
 (defmacro defmethod (name &rest args)
   (multiple-value-bind (specializers lambda-list body) (parse-method args)
-    (with-slots (function-name) (ensure-method-info name specializers body)
+    (let ((fn-name (function-name (ensure-method-info name specializers body))))
       `(progn
-	 (c2mop:defmethod ,name ,@args)
+	 ,(alet `(c2mop:defmethod ,name ,@args)
+	    (if (has-eql-specializer? specializers)
+		`(aprog1 ,it
+		   (setf (gf-method ',name (mapcar #'specializer->cl (method-specializers it)))
+			 (make-instance 'method-body :function-name ',fn-name :body ',body)))
+		it))
 
 	 (eval-when (:compile-toplevel :load-toplevel :execute)
 	   (setf (compiler-macro-function ',name) #'gf-compiler-macro))
 
-	 (defun ,function-name ,lambda-list ,@body)))))
+	 (defun ,fn-name ,lambda-list ,@body)))))
 
 (defun parse-method (args)
   (match args
@@ -108,6 +126,13 @@
        (collect (or specializer t) into specializers)))
 
     (finally (return (values specializers required)))))
+
+(defun has-eql-specializer? (specializers)
+  "Returns true if SPECIALIZERS contains EQL
+   specializers. SPECIALIZERS should be the list of specializers
+   extracted from a DEFMETHOD lambda list."
+
+  (some (lambda-match ((list 'eql _) t)) specializers))
 
 
 ;;;; Compiler Macro
@@ -163,7 +188,11 @@
 			 (,(function-name (gf-method gf-name method)) ,@gensyms)))))
 
 		 (specializer-pattern (specializer)
-		   (list 'type (class-name specializer))))
+		   (match (specializer->cl specializer)
+		     ((list 'eql object)
+		      `(eql ',object))
+
+		     (type `(type ,type)))))
 
 
 	  `(let ,(mapcar #'list gensyms args)
@@ -208,7 +237,7 @@
      (class-name specializer))
 
     ((class eql-specializer)
-     `(eql ',(eql-specializer-object specializer)))))
+     `(eql ,(eql-specializer-object specializer)))))
 
 
 (defun sort-methods (methods)
@@ -219,9 +248,15 @@
 
 (defun specializer< (s1 s2)
   "Specializer comparison function. Returns true if the specializer
-   list S1 should be ordered after S2."
+   list S1 should be ordered before S2."
 
   (match* (s1 s2)
+    (((list* (eql-specializer) _) _)
+     t)
+
+    ((_ (list* (eql-specializer) _))
+     nil)
+
     (((list* class1 s1)
       (list* class2 s2))
 
@@ -230,6 +265,4 @@
        (cond
 	 ((member class2 prec1) t)
 	 ((member class1 prec2) nil)
-	 ((eq class1 class2) (specializer< s1 s2)))))
-
-    ((_ _) t)))
+	 ((eq class1 class2) (specializer< s1 s2)))))))
