@@ -91,24 +91,26 @@
 ;;;; DEFMETHOD macro
 
 (defmacro defmethod (name &rest args)
-  (multiple-value-bind (specializers lambda-list body) (parse-method args)
-    (let ((fn-name (function-name (ensure-method-info name specializers body))))
-      `(progn
-	 ,(alet `(c2mop:defmethod ,name ,@args)
-	    (if (has-eql-specializer? specializers)
-		`(aprog1 ,it
-		   (setf (gf-method ',name (mapcar #'specializer->cl (method-specializers it)))
-			 (make-instance 'method-body :function-name ',fn-name :body ',body)))
-		it))
+  (handler-case
+      (multiple-value-bind (specializers lambda-list body) (parse-method args)
+	(let ((fn-name (function-name (ensure-method-info name specializers body))))
+	  `(progn
+	     ,(alet `(c2mop:defmethod ,name ,@args)
+		    (if (has-eql-specializer? specializers)
+			`(aprog1 ,it
+			   (setf (gf-method ',name (mapcar #'specializer->cl (method-specializers it)))
+				 (make-instance 'method-body :function-name ',fn-name :body ',body)))
+			it))
 
-	 (eval-when (:compile-toplevel :load-toplevel :execute)
-	   (setf (compiler-macro-function ',name) #'gf-compiler-macro))
+	     (eval-when (:compile-toplevel :load-toplevel :execute)
+	       (setf (compiler-macro-function ',name) #'gf-compiler-macro))
 
-	 (defun ,fn-name ,lambda-list ,@body)))))
+	     (defun ,fn-name ,lambda-list ,@body))))
+    (match-error () `(cl:defmethod ,name ,@args))))
 
 (defun parse-method (args)
-  (match args
-    ((list* (guard lambda-list #'listp) body)
+  (ematch args
+    ((list* (guard lambda-list (listp lambda-list)) body)
      (multiple-value-call #'values
        (parse-method-lambda-list lambda-list)
        body))))
@@ -144,6 +146,18 @@
      (mapcar (rcurry #'list 'dispatch type) fns))))
 
 
+(define-condition not-supported (error)
+  ((feature
+    :initarg :feature
+    :initform nil
+    :reader feature
+    :documentation
+    "Symbol identifying the unsupported feature."))
+
+  (:documentation
+   "Error condition: A CLOS feature was used that is not supporting in
+    inlining/static dispatch."))
+
 (defun gf-compiler-macro (whole &optional env)
   "Compiler macro function for statically dispatched generic
    functions."
@@ -152,7 +166,9 @@
    (match whole
      ((cons name args)
       (awhen (static-dispatch? name env)
-	(static-overload name args it))))
+	(handler-case
+	    (static-overload name args it)
+	  (not-supported () whole)))))
    whole))
 
 (defun static-dispatch? (name env)
@@ -238,6 +254,9 @@
    specializer list in argument precedence order."
 
   (iter (for method in methods)
+	(when (method-qualifiers method)
+	  (error 'not-supported :feature 'method-qualifiers))
+
 	(collect
 	    (cons method
 		  (order-by-precedence precedence (method-specializers method))))))
