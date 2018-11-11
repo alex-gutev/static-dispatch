@@ -206,7 +206,7 @@
 	(labels ((make-clause (method)
 		   (destructuring-bind (method . specializers) method
 		     (let ((lambda-list (method-lambda-list method))
-			   (cl-specializers (mapcar #'specializer->cl (method-specializers method))))
+			   (cl-specializers (mapcar #'specializer->cl (order-by-precedence precedence (method-specializers method)))))
 		       (list
 			(mapcar #'specializer-pattern specializers)
 			(make-match-body lambda-list cl-specializers)))))
@@ -260,6 +260,13 @@
 	(collect
 	    (cons method
 		  (order-by-precedence precedence (method-specializers method))))))
+
+(defun specializer-pattern (specializer)
+  (match (specializer->cl specializer)
+    ((list 'eql object)
+     `(eql ',object))
+
+    (type `(type ,type))))
 
 (defun specializer->cl (specializer)
   "Returns the CL representation of a specializer as used in a
