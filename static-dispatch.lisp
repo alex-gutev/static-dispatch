@@ -182,6 +182,11 @@
     (or (and (eq (cdr (assoc 'inline decl)) 'inline) 'inline)
 	(and (eq (cdr (assoc 'dispatch decl)) 'static) 'overload))))
 
+
+(defvar *current-gf* nil
+  "The name of the generic function currently being inlined/statically
+   dispatched.")
+
 (defun static-overload (gf-name args dispatch-type)
   "Returns a MATCH form which matches the arguments ARGS to the method
    specializers, of the generic function GF-NAME, and calls the most
@@ -190,7 +195,8 @@
    INLINE the bodies of the method functions are inserted directly
    into the match clauses."
 
-  (let* ((gf (fdefinition gf-name)))
+  (let* ((*current-gf* gf-name)
+	 (gf (fdefinition gf-name)))
 
     (with-accessors
 	  ((lambda-list generic-function-lambda-list)
@@ -205,22 +211,20 @@
 
 	(labels ((make-clause (method)
 		   (destructuring-bind (method . specializers) method
-		     (let ((lambda-list (method-lambda-list method))
-			   (cl-specializers (mapcar #'specializer->cl (order-by-precedence precedence (method-specializers method)))))
-		       (list
-			(mapcar #'specializer-pattern specializers)
-			(make-match-body lambda-list cl-specializers)))))
+		     (list
+		      (mapcar #'specializer-pattern specializers)
 
-		 (make-match-body (lambda-list specializers)
+		      (->>
+		       (mapcar #'car (rest (applicable-methods methods specializers)))
+		       (make-match-body method)))))
+
+		 (make-match-body (method next-methods)
 		   (ecase dispatch-type
 		     (overload
-		      `(locally (declare ,@(mapcar (curry #'list 'type) specializers gensyms))
-			 (,(function-name (gf-method gf-name specializers)) ,@gensyms)))
+		      (call-method-function method gensyms))
 
 		     (inline
-		      `(destructuring-bind ,lambda-list (list ,@gensyms)
-			 (declare ,@(mapcar (curry #'list 'type) specializers lambda-list))
-			 ,@(body (gf-method gf-name specializers))))))
+		      (inline-method-body method gensyms next-methods))))
 
 		 (specializer-pattern (specializer)
 		   (match (specializer->cl specializer)
@@ -233,6 +237,76 @@
 	  `(let ,(mapcar #'list gensyms args)
 	     (match* ,match-gensyms
 	       ,@(mapcar #'make-clause methods))))))))
+
+(defun call-method-function (method args)
+  "Returns a form which calls the method function of METHOD with
+   arguments ARGS. If ARGS is a list the function is called directly
+   with the list of arguments. If ARGS is a symbol the function is
+   called with APPLY, passing in ARGS as the last argument to APPLY."
+
+  (let* ((specializers (mapcar #'specializer->cl (method-specializers method)))
+	 (fn-name (function-name (gf-method *current-gf* specializers))))
+    (if (listp args)
+	(enclose-in-type-declarations `((,fn-name ,@args)) args specializers)
+	`(apply #',fn-name ,args))))
+
+
+(defun inline-method-body (method args next-methods)
+  "Returns the a form which contains the body of METHOD inline. ARGS
+   is either a list of the arguments passed to METHOD or a symbol
+   naming a variable in which the arguments list is
+   stored. NEXT-METHODS is the list of the next (less specific)
+   applicable methods."
+
+  (let ((lambda-list (method-lambda-list method))
+	(specializers (mapcar #'specializer->cl (method-specializers method))))
+
+    (destructuring-bind (&optional next-method &rest more-methods) next-methods
+      (with-gensyms (next-args)
+	`(flet ((call-next-method (&rest ,next-args)
+		  ,(if next-method
+		       (inline-method-body next-method next-args more-methods)
+		       `(apply #'no-next-method ',*current-gf* ,method ,args)))
+
+		(next-method-p ()
+		  ,(when next-method t)))
+	   (destructuring-bind ,lambda-list
+	       ,(if (listp args) `(list ,@args) args)
+	     ,@(when (listp args)
+		 (list (make-type-declarations lambda-list specializers)))
+	     ,@(body (gf-method *current-gf* specializers))))))))
+
+(defun enclose-in-type-declarations (forms vars types)
+  "Encloses FORMS in a LOCALLY form which declares the types of VARS
+   to be TYPES."
+
+  `(locally ,(make-type-declarations vars types)
+     ,@forms))
+
+(defun make-type-declarations (vars types)
+  "Returns a DECLARE expression which declares each variable in VARS
+   to be of the type stored in the corresponding element of TYPES"
+
+  `(declare ,@(mapcar (curry #'list 'type) types vars)))
+
+(defun applicable-methods (methods specializers)
+  "Returns the list of methods in METHODS which are applicable to the
+   specializers SPECIALIZERS."
+
+  (labels ((sub-specializer (spec1 spec2)
+	   (match* (spec1 spec2)
+	     (((eql-specializer :object o1)
+	       (eql-specializer :object o2))
+	      (eql o1 o2))
+
+	     (((class class)
+	       (class class))
+	      (subtypep spec1 spec2))))
+
+	   (sub-specializers (spec1 spec2)
+	     (every #'sub-specializer spec1 spec2)))
+
+    (remove-if-not (curry #'sub-specializers specializers) methods :key #'cdr)))
 
 
 (defun precedence-order (lambda-list precedence)
