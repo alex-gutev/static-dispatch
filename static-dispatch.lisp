@@ -382,4 +382,5 @@
        (cond
 	 ((member class2 prec1) t)
 	 ((member class1 prec2) nil)
-	 ((eq class1 class2) (specializer< s1 s2)))))))
+	 ((eq class1 class2) (specializer< s1 s2))
+	 (t (string< (class-name class1) (class-name class2))))))))
