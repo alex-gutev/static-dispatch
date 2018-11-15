@@ -259,19 +259,20 @@
    applicable methods."
 
   (let ((lambda-list (method-lambda-list method))
-	(specializers (mapcar #'specializer->cl (method-specializers method))))
+	(specializers (mapcar #'specializer->cl (method-specializers method)))
+	(args (if (listp args) (cons 'list args) args)))
 
     (destructuring-bind (&optional next-method &rest more-methods) next-methods
-      (with-gensyms (next-args)
-	`(flet ((call-next-method (&rest ,next-args)
-		  ,(if next-method
-		       (inline-method-body next-method next-args more-methods)
-		       `(apply #'no-next-method ',*current-gf* ,method ,args)))
+      (with-gensyms (next-arg-var next-args)
+	`(flet ((call-next-method (&rest ,next-arg-var)
+		  (let ((,next-args (or ,next-arg-var ,args)))
+		    ,(if next-method
+			 (inline-method-body next-method next-args more-methods)
+			 `(apply #'no-next-method ',*current-gf* ,method ,next-args))))
 
 		(next-method-p ()
 		  ,(when next-method t)))
-	   (destructuring-bind ,lambda-list
-	       ,(if (listp args) `(list ,@args) args)
+	   (destructuring-bind ,lambda-list ,args
 	     ,@(when (listp args)
 		 (list (make-type-declarations lambda-list specializers)))
 	     ,@(body (gf-method *current-gf* specializers))))))))
