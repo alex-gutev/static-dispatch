@@ -22,13 +22,13 @@ global variable which contains a hash-table mapping generic functions
 to their methods.
 
 A compiler macro function is added to the generic function which
-determines the types of the arguments to the function and replaces the
-function call form with the body of the most specific applicable
-method. If the types cannot be determined, or there isn't enough type
-information the generic function call is left as is. Thus in order to
-choose the appropriate method at compile-time rather than runtime, the
-types of the arguments either have to be declared using `DECLARE` or
-surrounded in a `THE` form.
+determines the types of the arguments and replaces the function call
+form with the body of the most specific applicable method. If the
+types cannot be determined, or there isn't enough type information the
+generic function call is left as is. Thus in order to choose the
+appropriate method at compile-time rather than runtime, the types of
+the arguments either have to be declared using `DECLARE` or surrounded
+in a `THE` form.
 
 
 ## Usage
@@ -49,7 +49,8 @@ following declaration is in place:
    1. `(INLINE <generic function name>)`
 
 In order for the appropriate method to be chosen directly the
-arguments to the generic function call form should be either:
+arguments to the generic function call form should be one of the
+following:
 
    + Variables, for which there is a type declaration.
    + `THE` forms.
@@ -65,9 +66,9 @@ value, or a macro/symbol-macro, which expands to the constant value,
 is passed as an argument to the generic function, the `EQL`
 specialized method will not be chosen.
 
-`CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported fully. Custom
-method combinations and `:BEFORE`, `:AFTER` and `:AROUND` methods are
-not supported.
+`CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported
+fully. User-defined method combinations and `:BEFORE`, `:AFTER`
+`:AROUND` methods are not supported.
 
 
 ## Differences from INLINED-GENERIC-FUNCTION
@@ -86,7 +87,7 @@ execution speed, as shown in
 
 Static-Dispatch does not use a custom generic function metaclass thus
 generic functions are identical to standard common lisp generic
-function, and hence the usual optimizations are performed, unless an
+functions, and hence the usual optimizations are performed, unless an
 `INLINE` declaration is in place. This only matters when generic
 functions are not inlined, however the goal of this library is to
 provide generic function inlining as an optimization for cases where
@@ -97,17 +98,17 @@ In Static-Dispatch the generic function call form is directly replaced
 with the body of the most-specific applicable method, whereas in
 Inlined-Generic-Function the form is replaced with a `MATCH` form
 which contains a pattern-matching clause for each method that checks
-whether the types of the arguments match the method's specializer and
-evaluates the body of the method. An advantage of the approach taken
-by Inlined-Generic-Function is that the method bodies can be inlined
-even if the arguments are more complicated expressions than variables
-and `THE` forms. However this relies on the compiler to remove the
-clauses corresponding to the non-applicable methods otherwise the
-result is that dynamic dispatch is still performed, however is
-performed inline and is potentially slower than the built-in dynamic
-dispatch of CLOS. SBCL is capable of removing branches, corresponding
-to non-applicable methods, however most other compilers (including
-CCL) are not.
+whether the types of the arguments match the method's specializer list
+and evaluates the body of the method. An advantage of the approach
+taken by Inlined-Generic-Function is that the method bodies can be
+inlined even if the arguments are more complicated expressions than
+variables and `THE` forms. However this relies on the compiler to
+remove the clauses corresponding to the non-applicable methods
+otherwise the result is that dynamic dispatch is still performed,
+however is performed inline and is potentially slower than the
+built-in dynamic dispatch of CLOS. SBCL is capable of removing
+branches, corresponding to non-applicable methods, however most other
+compilers (including CCL) are not.
 
 Static-Dispatch can handle full lambda-lists with all lambda-list
 keywords. Inlined-Generic-Function cannot, as of yet (November 2018),
