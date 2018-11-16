@@ -150,6 +150,19 @@
 
   (some (lambda-match ((list 'eql _) t)) specializers))
 
+(defun specializer->cl (specializer)
+  "Returns the CL representation of a specializer as used in a
+   DEFMETHOD lambda-list. `CLASS' specializers are replaced with their
+   CLASS-NAME and EQL specializers are replaced with `(EQL
+   ,EQL-SPECIALIZER-OBJECT). The EQL-SPECIALIZER-OBJECT is the value
+   to which the EQL object form was evaluated not the form itself."
+
+  (match specializer
+    ((class class)
+     (class-name specializer))
+
+    ((class eql-specializer))))
+
 
 ;;;; Compiler Macro
 
@@ -228,17 +241,17 @@
    corresponding element in ARGS."
 
   (labels ((get-type (x)
-	     (match x
-	       ((satisfies constantp)
-		`(eql ,x))
+	     (or
+	      (match x
+		((satisfies constantp)
+		 `(eql ,x))
 
-	       ((satisfies symbolp)
-		(var-type x))
+		((satisfies symbolp)
+		 (var-type x))
 
-	       ((list (or 'the 'cl:the) type _)
-		type)
-
-	       (_ t)))
+		((list (or 'the 'cl:the) type _)
+		 type))
+	      t))
 
 	   (var-type (var)
 	     (cdr (assoc 'type (nth-value 2 (variable-information var env))))))
