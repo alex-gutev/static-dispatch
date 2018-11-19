@@ -26,7 +26,7 @@
 (in-package #:static-dispatch)
 
 
-(defclass method-body ()
+(defclass method-info ()
   ((body
     :initarg :body
     :accessor body
@@ -56,13 +56,25 @@
    "Stores the body of a method and the name of a non-generic function
     which contains the method's body."))
 
+(define-condition not-supported (error)
+  ((feature
+    :initarg :feature
+    :initform nil
+    :reader feature
+    :documentation
+    "Symbol identifying the unsupported feature."))
+
+  (:documentation
+   "Error condition: A CLOS feature was used that is not supporting in
+    inlining/static dispatch."))
+
 
 (defvar *generic-function-table* (make-hash-table :test #'eq)
   "Hash table mapping generic functions to a list of methods.")
 
 (defun gf-methods (gf-name)
   "Returns the method information for the generic function GF-NAME. A
-   hash-table mapping lists of specializers to `METHOD-BODY' objects
+   hash-table mapping lists of specializers to `METHOD-INFO' objects
    is returned."
 
   (gethash gf-name *generic-function-table*))
@@ -71,10 +83,11 @@
   "Ensures that a method table for the generic function GF-NAME
    exists, in *GENERIC-FUNCTION-TABLE*."
 
-  (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal)))
+  (or (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal))
+      (error 'not-supported)))
 
 (defun gf-method (gf-name specializers)
-  "Returns the `METHOD-BODY', of the method with specializer list
+  "Returns the `METHOD-INFO', of the method with specializer list
    SPECIALIZERS, of the generic function GF-NAME."
 
   (aand (gf-methods gf-name) (gethash specializers it)))
@@ -91,36 +104,47 @@
    the generic function GF-NAME contains a method with specializers
    SPECIALIZERS, lambda-list LAMBDA-LIST and body BODY. If the table
    does not contain a method for those specializers, a new
-   `METHOD-BODY' object is created."
+   `METHOD-INFO' object is created."
 
   (aprog1
       (ensure-gethash specializers (ensure-gf-methods gf-name)
-		      (make-instance 'method-body))
+		      (make-instance 'method-info))
     (setf (lambda-list it) lambda-list)
     (setf (specializers it) specializers)
     (setf (body it) body)))
+
+(defun mark-no-dispatch (gf-name)
+  "Mark the generic function as one which should not be dispatched
+   statically. This is used primarily when unsupported features are
+   used in the definition of the generic function or its methods."
+
+  (setf (gethash gf-name *generic-function-table*) nil))
 
 
 ;;;; DEFMETHOD macro
 
 (defmacro defmethod (name &rest args)
-  (handler-case
-      (multiple-value-bind (specializers lambda-list body) (parse-method args)
-	(ensure-method-info name specializers :body body :lambda-list lambda-list)
-	`(progn
-	   ,(alet `(c2mop:defmethod ,name ,@args)
-	      (if (has-eql-specializer? specializers)
-		  `(aprog1 ,it
-		     (setf (gf-method ',name (mapcar #'specializer->cl (method-specializers it)))
-			   (make-instance 'method-body
-					  :body ',body
-					  :lambda-list ',lambda-list
-					  :specializers ',specializers)))
-		  it))
+  (or
+   (handler-case
+       (multiple-value-bind (specializers lambda-list body) (parse-method args)
+	 (ensure-method-info name specializers :body body :lambda-list lambda-list)
+	 `(progn
+	    ,(alet `(c2mop:defmethod ,name ,@args)
+		   (if (has-eql-specializer? specializers)
+		       `(aprog1 ,it
+			  (ensure-method-info
+			   ',name
+			   (mapcar #'specializer->cl (method-specializers it))
+			   :body ',body
+			   :lambda-list ',lambda-list))
+		       it))
 
-	   (eval-when (:compile-toplevel :load-toplevel :execute)
-	     (setf (compiler-macro-function ',name) #'gf-compiler-macro))))
-    (match-error () `(cl:defmethod ,name ,@args))))
+	    (eval-when (:compile-toplevel :load-toplevel :execute)
+	      (setf (compiler-macro-function ',name) #'gf-compiler-macro))))
+     (match-error () (mark-no-dispatch name))
+     (not-supported ()))
+
+   `(cl:defmethod ,name ,@args)))
 
 (defun parse-method (args)
   (ematch args
@@ -161,29 +185,11 @@
     ((class class)
      (class-name specializer))
 
-    ((class eql-specializer))))
+    ((class eql-specializer)
+     `(eql ,(eql-specializer-object specializer)))))
 
 
 ;;;; Compiler Macro
-
-(define-declaration dispatch (decl)
-  (destructuring-bind (type &rest fns) decl
-    (values
-     :function
-     (mapcar (rcurry #'list 'dispatch type) fns))))
-
-
-(define-condition not-supported (error)
-  ((feature
-    :initarg :feature
-    :initform nil
-    :reader feature
-    :documentation
-    "Symbol identifying the unsupported feature."))
-
-  (:documentation
-   "Error condition: A CLOS feature was used that is not supporting in
-    inlining/static dispatch."))
 
 (defun gf-compiler-macro (whole &optional env)
   "Compiler macro function for statically dispatched generic
@@ -199,15 +205,12 @@
    whole))
 
 (defun static-dispatch? (name env)
-  "Returns a symbol indicating the type of optimization which should
-   be performed by the compiler macro for the generic function
-   NAME. OVERLOAD is returned if the generic function should be
-   dispatched statically, INLINE if the body of the methods should be
-   additionally inlined, NIL if no optimizations should be performed."
+  "Checks whether the generic function named NAME should be statically
+   dispatched. This is the case if it is declared inline in the
+   environment ENV."
 
   (let ((decl (nth-value 2 (function-information name env))))
-    (or (and (eq (cdr (assoc 'inline decl)) 'inline) 'inline)
-	(and (eq (cdr (assoc 'dispatch decl)) 'static) 'overload))))
+    (eq (cdr (assoc 'inline decl)) 'inline)))
 
 
 (defvar *current-gf* nil
@@ -217,7 +220,7 @@
 (defun static-overload (gf-name args env)
   "Determines the types of the generic function (with name GF-NAME)
    arguments ARGS, determines the most applicable method and returns
-   the body of the method. If there are no applicable methods are the
+   the body of the method. If there are no applicable methods, or the
    types of the arguments could not be determined, NIL is returned."
 
   (let* ((*current-gf* gf-name)
@@ -226,7 +229,7 @@
     (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
 	   (match-args (order-by-precedence precedence args))
 	   (types (get-types match-args env))
-	   (methods (-<> (hash-table-alist (gf-methods gf-name))
+	   (methods (-<> (aand (gf-methods gf-name) (hash-table-alist it))
 			 (order-method-specializers precedence)
 			 (applicable-methods types)
 			 (sort-methods)
@@ -234,6 +237,19 @@
 
       (when methods
 	(inline-method-body (first methods) args (rest methods))))))
+
+
+(defun precedence-order (lambda-list precedence)
+  "Returns a list of the generic function arguments in argument
+   precedence order (PRECEDENCE). Each element in the list is the
+   index of the argument within LAMBDA-LIST."
+
+  (mapcar (rcurry #'position lambda-list) precedence))
+
+(defun order-by-precedence (precedence args)
+  "Orders the list ARGS by the order specified in PRECEDENCE."
+
+  (mapcar (curry #'elt args) precedence))
 
 (defun get-types (args env)
   "Determines the types of the argument forms ARGS, in the environment
@@ -244,7 +260,7 @@
 	     (or
 	      (match x
 		((satisfies constantp)
-		 `(eql ,x))
+		 `(eql ,(eval x)))
 
 		((satisfies symbolp)
 		 (var-type x))
@@ -257,6 +273,7 @@
 	     (cdr (assoc 'type (nth-value 2 (variable-information var env))))))
 
     (mapcar #'get-type args)))
+
 
 (defun order-method-specializers (methods precedence)
   "Orders the specializers of METHODS by the argument precedence order
@@ -362,15 +379,3 @@
    to be of the type stored in the corresponding element of TYPES"
 
   `(declare ,@(mapcar (curry #'list 'type) types vars)))
-
-(defun precedence-order (lambda-list precedence)
-  "Returns a list of the generic function arguments in argument
-   precedence order (PRECEDENCE). Each element in the list is the
-   index of the argument within LAMBDA-LIST."
-
-  (mapcar (rcurry #'position lambda-list) precedence))
-
-(defun order-by-precedence (precedence args)
-  "Orders the list ARGS by the order specified in PRECEDENCE."
-
-  (mapcar (curry #'elt args) precedence))
