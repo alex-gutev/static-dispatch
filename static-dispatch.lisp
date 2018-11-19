@@ -144,7 +144,21 @@
      (match-error () (mark-no-dispatch name))
      (not-supported ()))
 
-   `(cl:defmethod ,name ,@args)))
+   `(c2mop:defmethod ,name ,@args)))
+
+(defmacro defgeneric (name (&rest lambda-list) &rest options)
+  (iter (for option in options)
+	(match option
+	  ((list* :method args)
+	   (collect `(defmethod ,name ,@args) into methods))
+
+	  (_ (collect option into new-options)))
+
+	(finally
+	 (return
+	   `(progn
+	      (c2mop:defgeneric ,name ,lambda-list ,@new-options)
+	      ,@methods)))))
 
 (defun parse-method (args)
   (ematch args

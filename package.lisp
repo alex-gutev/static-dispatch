@@ -37,11 +37,11 @@
 	:agutil
 	:closer-environments)
 
-  (:shadow :defmethod)
+  (:shadow :defmethod
+	   :defgeneric)
 
   (:export :defmethod
-	   :dispatch
-	   :static))
+	   :defgeneric))
 
 (agutil:define-merged-package :static-dispatch-cl
     :closer-environments
