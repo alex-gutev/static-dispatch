@@ -39,4 +39,16 @@
 	       :closer-mop
 
 	       :agutil
-	       :cl-environments))
+	       :cl-environments)
+
+  :in-order-to ((asdf:test-op (asdf:test-op :static-dispatch-test))))
+
+(asdf:defsystem #:static-dispatch-test
+  :description "Tests for static-dispatch."
+  :author "Alexander Gutev"
+  :license "MIT"
+  :depends-on (:static-dispatch :prove :prove-asdf)
+  :defsystem-depends-on (:prove-asdf)
+  :components ((:file "test"))
+  :perform (asdf:test-op :after (op c)
+			 (funcall (intern #.(string :run) :prove) c)))

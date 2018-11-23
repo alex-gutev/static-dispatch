@@ -334,6 +334,11 @@
    specializer list S2."
 
   (match* (s1 s2)
+    (((list* (list 'eql o1) s1)
+      (list* (list 'eql o2) s2))
+
+     (and (eql o1 o2) (specializer< s1 s2)))
+
     (((list* (list 'eql _) _) _)
      t)
 
@@ -345,8 +350,8 @@
 
      (let* ((class1 (find-class type1))
 	    (class2 (find-class type2))
-	    (prec1 (class-precedence-list class1))
-	    (prec2 (class-precedence-list class2)))
+	    (prec1 (rest (class-precedence-list class1)))
+	    (prec2 (rest (class-precedence-list class2))))
        (cond
 	 ((member class2 prec1) t)
 	 ((member class1 prec2) nil)
