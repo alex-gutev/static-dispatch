@@ -55,7 +55,7 @@
 (plan nil)
 
 (subtest "DEFMETHOD form parser"
-  ;;; Test parse-method function
+  ;; Test parse-method function
 
   ;; Simple method with only required parameters and class specializers
   (is-values (parse-method
@@ -110,8 +110,8 @@
 (defgeneric equal? (a b))
 
 (subtest "DEFMETHOD macro"
-  ;;; Test that that the DEFMETHOD macro is adding the method
-  ;;; information to the generic function method table.
+  ;; Test that that the DEFMETHOD macro is adding the method
+  ;; information to the generic function method table.
 
   (let ((*generic-function-table* (make-hash-table :test #'eq)))
     (let* ((method `(static-dispatch:defmethod equal? ((a number) (b number))
@@ -197,10 +197,12 @@
 
 
 (subtest "Method Ordering"
-  ;;; Tests that the methods are being ordered correctly based on
-  ;;; specificity.
+  ;; Tests that the methods are being ordered correctly based on
+  ;; specificity.
 
   (subtest "Specializer Ordering"
+    ;; Test SPECIALIZE< function
+
     ;; Test ordering based on class precedence
     (ok (specializer< '(child t) '(person number)))
     (is (specializer< '(person number) '(child t)) nil)
@@ -230,7 +232,64 @@
     (is (specializer< '((eql all) t) '((eql all) number)) nil)
 
     ;; Test ordering of different EQL specializers
-    (is (specializer< '((eql 1) number) '((eql 2) t)) nil)))
+    (is (specializer< '((eql 1) number) '((eql 2) t)) nil))
+
+  (let* ((methods
+	  (mapcar
+	   #'list
+	   '((number t)
+	     (character character)
+	     (t t)
+	     (person person)
+	     (integer t)
+	     (t (eql 1))
+	     ((eql x) t)
+	     ((eql x) string)
+	     (person child)))))
+
+    (subtest "Method ordering based on specializer ordering"
+      ;; Test SORT-METHODS function
+
+      (is (sort-methods (copy-list methods))
+	  (mapcar
+	   #'list
+	   '(((eql x) string)
+	     ((eql x) t)
+
+	     (character character)
+	     (person child)
+	     (person person)
+	     (integer t)
+	     (number t)
+
+	     (t (eql 1))
+	     (t t)))))
+
+    (subtest "Determining the applicable methods"
+      ;; Test APPLICABLE-METHODS function
+
+      (is (applicable-methods methods '(integer integer))
+	  (mapcar #'list '((number t) (t t) (integer t))))
+
+      (is (applicable-methods methods '(number number))
+	  (mapcar #'list '((number t) (t t))))
+
+      (is (applicable-methods methods '(number t))
+	  (mapcar #'list '((number t) (t t))))
+
+      (is (applicable-methods methods '(child child))
+	  (mapcar #'list '((t t) (person person) (person child))))
+
+      (is (applicable-methods methods '(child person))
+	  (mapcar #'list '((t t) (person person))))
+
+      (is (applicable-methods methods '((eql x) number))
+	  (mapcar #'list '((t t) ((eql x) t))))
+
+      ;; Check that if there is not enough type information for an
+      ;; argument and not all the specializers for that argument, of
+      ;; all methods, are T then APPLICABLE-METHODS returns nil.
+      (is (applicable-methods methods '(t t)) nil))))
 
 
 (finalize)

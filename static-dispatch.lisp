@@ -311,7 +311,8 @@
 
 	   (filter-on-type (methods type)
 	     (if (eq type t)
-		 (and (every (compose (curry #'eq t) #'caar) methods) methods)
+		 (let ((methods (remove 'eql methods :key (compose #'ensure-car #'caar)))) ; Remove all EQL methods
+		   (and (every (compose (curry #'eq t) #'caar) methods) methods))
 		 (remove type methods :test-not #'subtypep :key #'caar)))
 
 	   (next-specializer (method)
