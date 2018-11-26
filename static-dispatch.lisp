@@ -238,20 +238,21 @@
    the body of the method. If there are no applicable methods, or the
    types of the arguments could not be determined, NIL is returned."
 
-  (let* ((*current-gf* gf-name)
-	 (gf (fdefinition gf-name)))
+  (when (fboundp gf-name)
+   (let* ((*current-gf* gf-name)
+	  (gf (fdefinition gf-name)))
 
-    (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	   (match-args (order-by-precedence precedence args))
-	   (types (get-types match-args env))
-	   (methods (-<> (aand (gf-methods gf-name) (hash-table-alist it))
-			 (order-method-specializers precedence)
-			 (applicable-methods types)
-			 (sort-methods)
-			 (mapcar #'cdr <>))))
+     (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
+	    (match-args (order-by-precedence precedence args))
+	    (types (get-types match-args env))
+	    (methods (-<> (aand (gf-methods gf-name) (hash-table-alist it))
+			  (order-method-specializers precedence)
+			  (applicable-methods types)
+			  (sort-methods)
+			  (mapcar #'cdr <>))))
 
-      (when methods
-	(inline-method-body (first methods) args (rest methods))))))
+       (when methods
+	 (inline-method-body (first methods) args (rest methods)))))))
 
 
 (defun precedence-order (lambda-list precedence)
