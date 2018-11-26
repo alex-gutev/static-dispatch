@@ -350,18 +350,22 @@
     (((list* type1 s1)
       (list* type2 s2))
 
-     (let* ((class1 (find-class type1))
-	    (class2 (find-class type2))
-	    (prec1 (rest (class-precedence-list class1)))
-	    (prec2 (rest (class-precedence-list class2))))
-       (cond
-	 ((member class2 prec1) t)
-	 ((member class1 prec2) nil)
-	 ((eq class1 class2) (specializer< s1 s2))
-	 (t
-	  (if (and s1 s2)
-	      (specializer< s1 s2)
-	      (string< (class-name class1) (class-name class2)))))))))
+     (let ((class1 (find-class type1))
+	   (class2 (find-class type2)))
+
+       (ensure-finalized class1)
+       (ensure-finalized class2)
+
+       (let ((prec1 (rest (class-precedence-list class1)))
+	     (prec2 (rest (class-precedence-list class2))))
+	 (cond
+	   ((member class2 prec1) t)
+	   ((member class1 prec2) nil)
+	   ((eq class1 class2) (specializer< s1 s2))
+	   (t
+	    (if (and s1 s2)
+		(specializer< s1 s2)
+		(string< (class-name class1) (class-name class2))))))))))
 
 
 (defun inline-method-body (method args next-methods)
