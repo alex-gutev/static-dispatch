@@ -149,4 +149,13 @@ Supports class and EQL specializers.
 Does not support user-defined method combinations, and before, after,
 around methods.
 
-Tested on CCL.
+Tested on: CCL, SBCL, CLISP, ECL, CMUCL and ABCL.
+
+### Knwon Issues:
+
+ * Methods are not inlined, if the types of the arguments are
+   declared, on ABCL due to ABCL not passing the lexical environment
+   to compiler-macros. Methods can only be inlined on ABCL by
+   surrounding the arguments in THE forms. See
+   [https://github.com/alex-gutev/cl-environments#issues] for more
+   information.
