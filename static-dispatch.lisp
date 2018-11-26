@@ -129,6 +129,9 @@
        (multiple-value-bind (specializers lambda-list body) (parse-method args)
 	 (ensure-method-info name specializers :body body :lambda-list lambda-list)
 	 `(progn
+	    (eval-when (:compile-toplevel :load-toplevel :execute)
+	      (setf (compiler-macro-function ',name) #'gf-compiler-macro))
+
 	    ,(alet `(c2mop:defmethod ,name ,@args)
 		   (if (has-eql-specializer? specializers)
 		       `(aprog1 ,it
@@ -137,10 +140,7 @@
 			   (mapcar #'specializer->cl (method-specializers it))
 			   :body ',body
 			   :lambda-list ',lambda-list))
-		       it))
-
-	    (eval-when (:compile-toplevel :load-toplevel :execute)
-	      (setf (compiler-macro-function ',name) #'gf-compiler-macro))))
+		       it))))
      (match-error () (mark-no-dispatch name))
      (not-supported ()))
 
@@ -158,7 +158,8 @@
 	 (return
 	   `(progn
 	      (c2mop:defgeneric ,name ,lambda-list ,@new-options)
-	      ,@methods)))))
+	      ,@methods
+	      (fdefinition ',name))))))
 
 (defun parse-method (args)
   (ematch args
