@@ -27,9 +27,11 @@
 
 (defpackage :static-dispatch-test
   (:use :common-lisp
-	:prove
+	:alexandria
+	:cl-arrows
+	:trivia
 
-	:alexandria)
+	:prove)
 
   (:import-from
    :static-dispatch
@@ -51,7 +53,10 @@
    :order-method-specializers
    :applicable-methods
    :sort-methods
-   :specializer<))
+   :specializer<
+
+   :*current-gf*
+   :inline-method-body))
 
 (in-package :static-dispatch-test)
 
@@ -334,5 +339,187 @@
        '((character number t)
 	 (t integer t)
 	 (t t t)))))
+
+(subtest "Method inlining"
+  ;; Test the output of the INLINE-METHOD-BODY function
+
+  (let ((*current-gf* 'equal?)
+	(method1 (make-instance 'method-info
+				:body '(= a b)
+				:lambda-list '(a b)
+				:specializers '(number number)))
+	(method2 (make-instance 'method-info
+				:body '(eq x y)
+				:lambda-list '(x y)
+				:specializers '(t t))))
+
+    (block inline-method-test
+      (macrolet ((fail-test (desc)
+		   "Fail test with description DESC and skip remaining
+                    tests."
+
+		   `(progn
+		      (fail ,desc)
+		      (return-from inline-method-test nil))))
+
+	(labels ((test-inline-method (args method next-methods)
+		   "Test the result of inlining METHOD, with next
+                    methods NEXT-METHODS and arguments ARGS."
+
+		   (-> (inline-method-body method args next-methods)
+		       (test-inline-form args method next-methods)))
+
+		 (test-inline-form (form args method next-methods)
+		   "Test whether the inline method form, FORM, is
+                    correct for METHOD, next methods NEXT-METHODS and
+                    arguments ARGS."
+
+		   (match form
+		     ((list 'static-dispatch-cl:flet (list* fns) body)
+		      (let ((args (if (listp args) `(list ,@args) args)))
+			(test-flet-fns fns args next-methods)
+			(test-flet-body body args method)
+
+			(pass "Correct inline method form.")))
+
+		     (_
+		      (fail-test (format nil "Incorrect inline method form: ~s." form)))))
+
+		 (test-flet-fns (fns args next-methods)
+		   "Tests whether the lexical function definitions,
+                    FNS, for CALL-NEXT-METHOD and NEXT-METHOD-P are
+                    correct."
+
+		   (match fns
+		     ((list
+		       (list* 'static-dispatch-cl:call-next-method next-fn)
+		       (list* 'static-dispatch-cl:next-method-p next-p-fn))
+
+		      (test-call-next-method next-fn args next-methods)
+		      (test-next-method-p next-p-fn next-methods)
+
+		      (pass "FLET definitions for CALL-NEXT-METHOD and NEXT-METHOD-p correct."))
+
+		     (_
+		      (fail-test (format nil "FLET definitions for CALL-NEXT-METHOD and NEXT-METHOD-P incorrect: ~s." fns)))))
+
+
+		 ;; FLET Body
+
+		 (test-flet-body (body args method)
+		   "Tests whether the body of the FLET form,
+                    containing the actual inline method body, is
+                    correct."
+
+		   (match body
+		     ((list* 'static-dispatch-cl:destructuring-bind
+			     (equal (lambda-list method))
+			     (equal args)
+			     body)
+
+		      (test-method-body body (listp args) method)
+
+		      (pass "Body of inline FLET form is correct."))
+
+		     (_
+		      (fail-test (format nil "Body of inline FLET form is incorrect: ~s." body)))))
+
+		 (test-method-body (body decl-p method)
+		   "Tests whether the inline method body matches the
+                    body of METHOD. If DECL-P is true then local type
+                    declarations for the arguments are expected."
+
+		   (match body
+		     ((guard
+		       (list* (list* 'static-dispatch-cl:declare declarations)
+			      (equal (body method)))
+		       decl-p)
+
+		      ;; Test declarations
+
+		      (if (equal declarations (mapcar (curry #'list 'type) (specializers method) (lambda-list method)))
+			  (pass "Method argument type declarations correct.")
+			  (fail-test (format nil "Incorrect method argument type declarations: ~s." types)))
+
+		      (pass "Inline method body matches method body."))
+
+		     ((equal (body method))
+		      (pass "Inline method body matches method body."))
+
+		     (_
+		      (fail-test (format nil "Inline BODY does not match method body: ~s" body)))))
+
+
+		 ;; Test NEXT-METHOD-P
+
+		 (test-next-method-p (fn next-methods)
+		   "Tests whether the NEXT-METHOD-P function
+                    definition is correct."
+
+		   (match fn
+		     ((list nil (eql (and next-methods t)))
+		      (pass "NEXT-METHOD-P definition is correct."))
+
+		     (_
+		      (fail-test (format nil "Incorrect NEXT-METHOD-P definition: ~s." fn)))))
+
+
+		 ;; Test CALL-NEXT-METHOD
+
+		 (test-call-next-method (fn args next-methods)
+		   "Tests whether the CALL-NEXT-METHOD function
+                    definition is correct."
+
+		   (match fn
+		     ((list
+		       (list '&rest fn-arg)
+		       body)
+
+		      (test-next-method-body body fn-arg args next-methods)
+		      (pass "CALL-NEXT-METHOD definition is correct."))
+
+		     (_
+		      (fail-test (format nil "Incorrect CALL-NEXT-METHOD definition: ~s." fn)))))
+
+		 (test-next-method-body (body fn-arg args next-methods)
+		   "Tests whether the body of the CALL-NEXT-METHOD
+                    function is correct."
+
+		   (match body
+		     ((list
+		       'static-dispatch-cl:let
+		       (list (list next-args next-args-init))
+		       body)
+
+		      (test-next-args-initform next-args-init fn-arg args)
+
+		      (if next-methods
+			  (test-inline-form body next-args (first next-methods) (rest next-methods))
+			  (test-no-next-method body next-args))
+
+		      (pass "Body of CALL-NEXT-METHOD is correct."))
+
+		     (_ (fail-test (format nil "Incorrect CALL-NEXT-METHOD body: ~s" body)))))
+
+		 (test-next-args-initform (form fn-arg args)
+		   "Tests whether the init-form of the variable,
+                    storing the arguments passed to the next method,
+                    is correct."
+
+		   (match form
+		     ((list 'static-dispatch-cl:or (eql fn-arg) (equal args))
+		      (pass "Next method arguments are correct."))
+
+		     (_ (fail-test (format nil "Incorrect next method arguments: ~s." form)))))
+
+		 (test-no-next-method (body args)
+		   "Tests whether the call to NO-NEXT-METHOD is correct."
+
+		   (if (equal `(apply #'static-dispatch-cl:no-next-method ',*current-gf* nil ,args) body)
+		       (pass "Call to NO-NEXT-METHOD is correct.")
+		       (fail-test (format nil "Incorrect NO-NEXT-METHOD call: ~s." body)))))
+
+	  (test-inline-method '((+ u v) 3) method1 (list method2))
+	  (test-inline-method '(y z) method2 nil))))))
 
 (finalize)
