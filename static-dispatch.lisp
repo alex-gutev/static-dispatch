@@ -69,7 +69,7 @@
     inlining/static dispatch."))
 
 
-(defvar *generic-function-table* (make-hash-table :test #'eq)
+(defvar *generic-function-table* (make-hash-table :test #'equal)
   "Hash table mapping generic functions to a list of methods.")
 
 (defun gf-methods (gf-name)
@@ -382,10 +382,21 @@
 
 		  (next-method-p ()
 		    ,(when next-method t)))
-	     (destructuring-bind ,lambda-list ,args
-	       ,@(when (listp args)
-		   (list (make-type-declarations lambda-list specializers)))
-	       ,@(body method))))))))
+	     (block ,(block-name *current-gf*)
+	      (destructuring-bind ,lambda-list ,args
+		,@(when (listp args)
+			(list (make-type-declarations lambda-list specializers)))
+		,@(body method)))))))))
+
+(defun block-name (gf-name)
+  "Returns the name of the implicit block, surrounding a method of the
+   generic function GF-NAME."
+
+  (match gf-name
+    ((list 'setf name)
+     name)
+
+    (_ gf-name)))
 
 (defun enclose-in-type-declarations (forms vars types)
   "Encloses FORMS in a LOCALLY form which declares the types of VARS

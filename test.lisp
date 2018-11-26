@@ -56,7 +56,8 @@
    :specializer<
 
    :*current-gf*
-   :inline-method-body))
+   :inline-method-body
+   :block-name))
 
 (in-package :static-dispatch-test)
 
@@ -341,6 +342,11 @@
 	 (t t t)))))
 
 (subtest "Method inlining"
+  ;; Test the BLOCK-NAME function
+
+  (is (block-name 'equal?) 'equal?)
+  (is (block-name '(setf field)) 'field)
+
   ;; Test the output of the INLINE-METHOD-BODY function
 
   (let ((*current-gf* 'equal?)
@@ -412,10 +418,11 @@
                     correct."
 
 		   (match body
-		     ((list* 'static-dispatch-cl:destructuring-bind
-			     (equal (lambda-list method))
-			     (equal args)
-			     body)
+		     ((list 'static-dispatch-cl:block (equal (block-name *current-gf*))
+			    (list* 'static-dispatch-cl:destructuring-bind
+				   (equal (lambda-list method))
+				   (equal args)
+				   body))
 
 		      (test-method-body body (listp args) method)
 
@@ -520,6 +527,11 @@
 		       (fail-test (format nil "Incorrect NO-NEXT-METHOD call: ~s." body)))))
 
 	  (test-inline-method '((+ u v) 3) method1 (list method2))
-	  (test-inline-method '(y z) method2 nil))))))
+	  (test-inline-method '(y z) method2 nil)
+
+	  ;; Test SETF methods
+
+	  (let ((*current-gf* '(setf field)))
+	    (test-inline-method '(a b) method2 nil)))))))
 
 (finalize)
