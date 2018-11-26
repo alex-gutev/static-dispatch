@@ -151,7 +151,7 @@ around methods.
 
 Tested on: CCL, SBCL, CLISP, ECL, CMUCL and ABCL.
 
-### Knwon Issues:
+### Known Issues:
 
  * On ABCL: methods are not inlined, if the types of the arguments are
    declared, due to the the lexical environment not being passed to
