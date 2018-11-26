@@ -25,7 +25,7 @@
 
 (agutil:define-merged-package :closer-environments
     :cl-environments
-  :closer-common-lisp)
+  :closer-mop)
 
 (defpackage #:static-dispatch
   (:use :alexandria
