@@ -198,10 +198,10 @@
 
 ;; Classes used to test method ordering
 
-(defclass person ()
+(c2mop:defclass person ()
   (name age))
 
-(defclass child (person)
+(c2mop:defclass child (person)
   (parent))
 
 
@@ -453,7 +453,7 @@
 
 		      (if (equal declarations (mapcar (curry #'list 'type) (specializers method) (lambda-list method)))
 			  (pass "Method argument type declarations correct.")
-			  (fail-test (format nil "Incorrect method argument type declarations: ~s." types)))
+			  (fail-test (format nil "Incorrect method argument type declarations: ~s." declarations)))
 
 		      (pass "Inline method body matches method body."))
 
