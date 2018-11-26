@@ -349,7 +349,8 @@
 
   ;; Test the output of the INLINE-METHOD-BODY function
 
-  (let ((*current-gf* 'equal?)
+  (let ((*check-types*)
+	(*current-gf* 'equal?)
 	(method1 (make-instance 'method-info
 				:body '(= a b)
 				:lambda-list '(a b &optional c)
@@ -358,6 +359,7 @@
 				:body '(eq x y)
 				:lambda-list '(x y &optional c)
 				:specializers '(t t))))
+    (declare (special *check-types*))
 
     (block inline-method-test
       (macrolet ((fail-test (desc)
@@ -368,11 +370,13 @@
 		      (fail ,desc)
 		      (return-from inline-method-test nil))))
 
-	(labels ((test-inline-method (args method next-methods)
+	(labels ((test-inline-method (args method next-methods &optional *check-types*)
 		   "Test the result of inlining METHOD, with next
                     methods NEXT-METHODS and arguments ARGS."
 
-		   (-> (inline-method-body method args next-methods)
+		   (declare (special *check-types*))
+
+		   (-> (inline-method-body method args next-methods *check-types*)
 		       (test-inline-form args method next-methods)))
 
 		 (test-inline-form (form args method next-methods)
@@ -443,25 +447,51 @@
                     body of METHOD. If DECL-P is true then local type
                     declarations for the arguments are expected."
 
-		   (match body
-		     ((guard
-		       (list* (list* 'static-dispatch-cl:declare declarations)
-			      (equal (body method)))
-		       decl-p)
+		   (with-slots (lambda-list specializers) method
 
-		      ;; Test declarations
+		    (match body
+		      ((guard
+			(list* (list* 'static-dispatch-cl:declare declarations)
+			       (equal (body method)))
+			decl-p)
 
-		      (if (equal declarations (mapcar (curry #'list 'type) (specializers method) (lambda-list method)))
-			  (pass "Method argument type declarations correct.")
-			  (fail-test (format nil "Incorrect method argument type declarations: ~s." declarations)))
+		       ;; Test declarations
 
-		      (pass "Inline method body matches method body."))
+		       (if (equal declarations (mapcar (curry #'list 'type) specializers lambda-list))
+			   (pass "Method argument type declarations correct.")
+			   (fail-test (format nil "Incorrect method argument type declarations: ~s." declarations)))
 
-		     ((equal (body method))
-		      (pass "Inline method body matches method body."))
+		       (pass "Inline method body matches method body."))
 
-		     (_
-		      (fail-test (format nil "Inline BODY does not match method body: ~s" body)))))
+		      (body
+
+		       (or
+			(if *check-types*
+			    (equal (test-check-type body lambda-list specializers) (body method))
+			    (equal body (body method)))
+			(trivia.fail:fail))
+
+		       (pass "Inline method body matches method body."))
+
+		      (_
+		       (fail-test (format nil "Inline BODY does not match method body: ~s." body))))))
+
+		 (test-check-type (body args types)
+		   "Check whether the first few forms of BODY are
+                    CHECK-TYPE forms for the variables in ARGS and the
+                    corresponding types in TYPES."
+
+		   (if types
+		       (match body
+			 ((list* (list 'static-dispatch-cl:check-type
+				       (eql (first args))
+				       (equal (first types)))
+				 body)
+
+			  (test-check-type body (rest args) (rest types)))
+
+			 (_ (fail-test (format nil "Incorrect type checks in method body: ~s." body))))
+		       body))
 
 
 		 ;; Test NEXT-METHOD-P
@@ -534,7 +564,10 @@
 		       (fail-test (format nil "Incorrect NO-NEXT-METHOD call: ~s." body)))))
 
 	  (test-inline-method '((+ u v) 3) method1 (list method2))
-	  (test-inline-method '(y z) method2 nil)
+	  (test-inline-method '(y z) method2 nil t)
+
+	  ;; Test with type-checks
+	  (test-inline-method '((+ u v) 3) method1 (list method2) t)
 
 	  ;; Test SETF methods
 

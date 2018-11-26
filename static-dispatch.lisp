@@ -252,7 +252,7 @@
 			  (mapcar #'cdr <>))))
 
        (when methods
-	 (inline-method-body (first methods) args (rest methods)))))))
+	 (inline-method-body (first methods) args (rest methods) (should-check-types env)))))))
 
 
 (defun precedence-order (lambda-list precedence)
@@ -369,7 +369,7 @@
 		(string< (class-name class1) (class-name class2))))))))))
 
 
-(defun inline-method-body (method args next-methods)
+(defun inline-method-body (method args next-methods &optional check-types)
   "Returns the a form which contains the body of METHOD inline. ARGS
    is either a list of the arguments passed to METHOD or a symbol
    naming a variable in which the arguments list is
@@ -383,7 +383,7 @@
 	  `(flet ((call-next-method (&rest ,next-arg-var)
 		    (let ((,next-args (or ,next-arg-var ,args)))
 		      ,(if next-method
-			   (inline-method-body next-method next-args more-methods)
+			   (inline-method-body next-method next-args more-methods check-types)
 			   `(apply #'no-next-method ',*current-gf* nil ,next-args))))
 
 		  (next-method-p ()
@@ -393,8 +393,11 @@
 	      (destructuring-bind ,lambda-list ,args
 		,(-> (subseq lambda-list 0 (length specializers))
 		     (make-ignorable-declarations))
-		,@(when (listp args)
-			(list (make-type-declarations lambda-list specializers)))
+		,@(cond
+		   ((listp args)
+		    (list (make-type-declarations lambda-list specializers)))
+		   (check-types
+		    (make-type-checks lambda-list specializers)))
 		,@(body method)))))))))
 
 (defun block-name (gf-name)
@@ -419,6 +422,22 @@
    to be of the type stored in the corresponding element of TYPES"
 
   `(declare ,@(mapcar (curry #'list 'type) types vars)))
+
+(defun should-check-types (env)
+  "Returns true if CHECK-TYPE forms should be added in the body of
+   CALL-NEXT-METHOD. CHECK-TYPE forms are added if the priority of
+   the SAFETY optimize quality is greater than or equal to the SPEED
+   optimize quality in the environment ENV."
+
+  (let ((optimize (declaration-information 'optimize env)))
+    (>= (second (assoc 'safety optimize))
+	(second (assoc 'speed optimize)))))
+
+(defun make-type-checks (vars types)
+  "Returns a list of CHECK-TYPE forms for each variable in VARS and
+   corresponding type in TYPES."
+
+  (mapcar (curry #'list 'check-type) vars types))
 
 (defun make-ignorable-declarations (vars)
   "Creates a DECLARE IGNORABLE expression for the variables in VARS."
