@@ -352,11 +352,11 @@
   (let ((*current-gf* 'equal?)
 	(method1 (make-instance 'method-info
 				:body '(= a b)
-				:lambda-list '(a b)
+				:lambda-list '(a b &optional c)
 				:specializers '(number number)))
 	(method2 (make-instance 'method-info
 				:body '(eq x y)
-				:lambda-list '(x y)
+				:lambda-list '(x y &optional c)
 				:specializers '(t t))))
 
     (block inline-method-test
@@ -381,7 +381,9 @@
                     arguments ARGS."
 
 		   (match form
-		     ((list 'static-dispatch-cl:flet (list* fns) body)
+		     ((list 'static-dispatch-cl:flet (list* fns)
+			    '(static-dispatch-cl:declare (ignorable #'static-dispatch-cl:call-next-method #'static-dispatch-cl:next-method-p))
+			    body)
 		      (let ((args (if (listp args) `(list ,@args) args)))
 			(test-flet-fns fns args next-methods)
 			(test-flet-body body args method)
@@ -417,19 +419,24 @@
                     containing the actual inline method body, is
                     correct."
 
-		   (match body
-		     ((list 'static-dispatch-cl:block (equal (block-name *current-gf*))
-			    (list* 'static-dispatch-cl:destructuring-bind
-				   (equal (lambda-list method))
-				   (equal args)
-				   body))
+		   (with-slots (lambda-list specializers) method
+		     (let ((req-args (subseq lambda-list 0 (length specializers))))
+		      (match body
+			((list 'static-dispatch-cl:block (equal (block-name *current-gf*))
+			       (list* 'static-dispatch-cl:destructuring-bind
+				      (equal lambda-list)
+				      (equal args)
+				      (list 'static-dispatch-cl:declare
+					    (list* 'ignorable
+						   (equal req-args)))
+				      body))
 
-		      (test-method-body body (listp args) method)
+			 (test-method-body body (listp args) method)
 
-		      (pass "Body of inline FLET form is correct."))
+			 (pass "Body of inline FLET form is correct."))
 
-		     (_
-		      (fail-test (format nil "Body of inline FLET form is incorrect: ~s." body)))))
+			(_
+			 (fail-test (format nil "Body of inline FLET form is incorrect: ~s." body)))))))
 
 		 (test-method-body (body decl-p method)
 		   "Tests whether the inline method body matches the

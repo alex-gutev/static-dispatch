@@ -383,8 +383,11 @@
 
 		  (next-method-p ()
 		    ,(when next-method t)))
+	     (declare (ignorable #'call-next-method #'next-method-p))
 	     (block ,(block-name *current-gf*)
 	      (destructuring-bind ,lambda-list ,args
+		,(-> (subseq lambda-list 0 (length specializers))
+		     (make-ignorable-declarations))
 		,@(when (listp args)
 			(list (make-type-declarations lambda-list specializers)))
 		,@(body method)))))))))
@@ -411,3 +414,8 @@
    to be of the type stored in the corresponding element of TYPES"
 
   `(declare ,@(mapcar (curry #'list 'type) types vars)))
+
+(defun make-ignorable-declarations (vars)
+  "Creates a DECLARE IGNORABLE expression for the variables in VARS."
+
+  `(declare (ignorable ,@vars)))
