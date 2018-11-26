@@ -149,7 +149,4 @@ Supports class and EQL specializers.
 Does not support user-defined method combinations, and before, after,
 around methods.
 
-Methods may only be defined using `DEFMETHOD`, not (yet) using the
-`:METHOD` option of `DEFGENERIC`.
-
 Tested on CCL.
