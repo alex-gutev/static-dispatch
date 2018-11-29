@@ -70,6 +70,11 @@ specialized method will not be chosen.
 fully. User-defined method combinations and `:BEFORE`, `:AFTER`
 `:AROUND` methods are not supported.
 
+**Note:** In order for type and inline declarations to be made
+available, to the compiler macro, consistently across implementations
+the `ENABLE-HOOK` function has to be called at some point, see
+https://github.com/alex-gutev/cl-environments#documentation for more
+information.
 
 ## Differences from INLINED-GENERIC-FUNCTION
 
@@ -156,6 +161,7 @@ Tested on: CCL, SBCL, CLISP, ECL, CMUCL and ABCL.
  * On ABCL: methods are not inlined, if the types of the arguments are
    declared, due to the the lexical environment not being passed to
    compiler-macros. Methods can only be inlined on ABCL by surrounding
-   the arguments in THE forms. See
-   [https://github.com/alex-gutev/cl-environments#issues] for more
+   the arguments in THE forms and if the generic function is declared
+   inline globally. See
+   https://github.com/alex-gutev/cl-environments#issues for more
    information.
