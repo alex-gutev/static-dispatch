@@ -212,7 +212,15 @@
 
   (or
    (match whole
-     ((cons name args)
+     ;; Just in case some implementation decides to invoke the
+     ;; compiler macro for APPLY and MULTIPLE-VALUE-CALL forms.
+     ((cons (or 'apply 'cl:multiple-value-call) _)
+      whole)
+
+     ((or
+       (list* 'funcall name args)
+       (cons name args))
+
       (when (static-dispatch? name env)
 	(handler-case
 	    (static-overload name args env)
