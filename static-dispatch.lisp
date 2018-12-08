@@ -252,7 +252,7 @@
 			  (mapcar #'cdr <>))))
 
        (when methods
-	 (inline-method-body (first methods) args (rest methods) (should-check-types env)))))))
+	 (inline-method-body (first methods) args (rest methods) (should-check-types env) types))))))
 
 
 (defun precedence-order (lambda-list precedence)
@@ -369,12 +369,13 @@
 		(string< (class-name class1) (class-name class2))))))))))
 
 
-(defun inline-method-body (method args next-methods &optional check-types)
+(defun inline-method-body (method args next-methods &optional check-types types)
   "Returns the a form which contains the body of METHOD inline. ARGS
    is either a list of the arguments passed to METHOD or a symbol
    naming a variable in which the arguments list is
    stored. NEXT-METHODS is the list of the next (less specific)
-   applicable methods."
+   applicable methods. TYPES is the types of the arguments as
+   determined from the lexical environment."
 
   (with-slots (lambda-list specializers body) method
     (let ((args (if (listp args) (cons 'list args) args)))
@@ -394,8 +395,8 @@
 		,(-> (subseq lambda-list 0 (length specializers))
 		     (make-ignorable-declarations))
 		,@(cond
-		   ((listp args)
-		    (list (make-type-declarations lambda-list specializers)))
+		   (types
+		    (list (make-type-declarations lambda-list types)))
 		   (check-types
 		    (make-type-checks lambda-list specializers)))
 		,@(body method)))))))))

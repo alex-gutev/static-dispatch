@@ -370,16 +370,16 @@
 		      (fail ,desc)
 		      (return-from inline-method-test nil))))
 
-	(labels ((test-inline-method (args method next-methods &optional *check-types*)
+	(labels ((test-inline-method (args method next-methods &optional *check-types* types)
 		   "Test the result of inlining METHOD, with next
                     methods NEXT-METHODS and arguments ARGS."
 
 		   (declare (special *check-types*))
 
-		   (-> (inline-method-body method args next-methods *check-types*)
-		       (test-inline-form args method next-methods)))
+		   (-> (inline-method-body method args next-methods *check-types* types)
+		       (test-inline-form args method next-methods types)))
 
-		 (test-inline-form (form args method next-methods)
+		 (test-inline-form (form args method next-methods &optional types)
 		   "Test whether the inline method form, FORM, is
                     correct for METHOD, next methods NEXT-METHODS and
                     arguments ARGS."
@@ -390,7 +390,7 @@
 			    body)
 		      (let ((args (if (listp args) `(list ,@args) args)))
 			(test-flet-fns fns args next-methods)
-			(test-flet-body body args method)
+			(test-flet-body body args method types)
 
 			(pass "Correct inline method form.")))
 
@@ -418,7 +418,7 @@
 
 		 ;; FLET Body
 
-		 (test-flet-body (body args method)
+		 (test-flet-body (body args method types)
 		   "Tests whether the body of the FLET form,
                     containing the actual inline method body, is
                     correct."
@@ -435,14 +435,14 @@
 						   (equal req-args)))
 				      body))
 
-			 (test-method-body body (listp args) method)
+			 (test-method-body body (listp args) method types)
 
 			 (pass "Body of inline FLET form is correct."))
 
 			(_
 			 (fail-test (format nil "Body of inline FLET form is incorrect: ~s." body)))))))
 
-		 (test-method-body (body decl-p method)
+		 (test-method-body (body decl-p method types)
 		   "Tests whether the inline method body matches the
                     body of METHOD. If DECL-P is true then local type
                     declarations for the arguments are expected."
@@ -457,7 +457,7 @@
 
 		       ;; Test declarations
 
-		       (if (equal declarations (mapcar (curry #'list 'type) specializers lambda-list))
+		       (if (equal declarations (mapcar (curry #'list 'type) types lambda-list))
 			   (pass "Method argument type declarations correct.")
 			   (fail-test (format nil "Incorrect method argument type declarations: ~s." declarations)))
 
@@ -563,15 +563,15 @@
 		       (pass "Call to NO-NEXT-METHOD is correct.")
 		       (fail-test (format nil "Incorrect NO-NEXT-METHOD call: ~s." body)))))
 
-	  (test-inline-method '((+ u v) 3) method1 (list method2))
+	  (test-inline-method '((+ u v) 3) method1 (list method2) nil '(integer integer))
 	  (test-inline-method '(y z) method2 nil t)
 
 	  ;; Test with type-checks
-	  (test-inline-method '((+ u v) 3) method1 (list method2) t)
+	  (test-inline-method '((+ u v) 3) method1 (list method2) t '(number number))
 
 	  ;; Test SETF methods
 
 	  (let ((*current-gf* '(setf field)))
-	    (test-inline-method '(a b) method2 nil)))))))
+	    (test-inline-method '(a b) method2 nil nil '(t t))))))))
 
 (finalize)
