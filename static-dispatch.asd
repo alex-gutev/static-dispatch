@@ -50,6 +50,6 @@
   :license "MIT"
   :depends-on (:static-dispatch :prove :prove-asdf)
   :defsystem-depends-on (:prove-asdf)
-  :components ((:file "test"))
+  :components ((:test-file "test"))
   :perform (asdf:test-op :after (op c)
 			 (funcall (intern #.(string :run) :prove) c)))
