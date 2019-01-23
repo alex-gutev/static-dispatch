@@ -218,7 +218,8 @@
       whole)
 
      ((or
-       (list* 'funcall name args)
+       (list* 'funcall (or (list 'function name)
+			   (guard name (symbolp name))) args)
        (cons name args))
 
       (when (static-dispatch? name env)
