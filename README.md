@@ -52,19 +52,28 @@ In order for the appropriate method to be chosen directly the
 arguments to the generic function call form should be one of the
 following:
 
-   + Variables, for which there is a type declaration.
+   + Variables for which there is a `TYPE` declaration.
+   + Functions for which there is an `FTYPE` declaration.
    + `THE` forms.
+   + Constant literals.
+   + Constants defined using `DEFCONSTANT`.
+   + Macros/Symbol-macros which expand to one of the above.
 
 Otherwise no method is chosen and the generic function call form is
 left as is.
 
-Both `EQL` and class specializers are supported though `EQL`
-specialized methods will never be chosen statically unless the
-constant value is passed directly as an argument to the generic
-function, that is even if a variable, which is `EQL` to the constant
-value, or a macro/symbol-macro, which expands to the constant value,
-is passed as an argument to the generic function, the `EQL`
-specialized method will not be chosen.
+Both `EQL` and class specializers are supported. `EQL` methods will
+only be chosen statically if the argument is one of the following and
+is `EQL` to the specializer's value.
+
+   + Constant literal.
+   + Constant defined using `DEFCONSTANT`.
+   + Variable with a `TYPE (EQL ...)` declaration.
+   + Macro/Symbol-macro which expands to one of the above.
+
+**Note:** Even if a variable is bound (by `LET`) to a value that is
+`EQL` to the specializer's value, it will not be chosen unless it has
+a `TYPE (EQL ...)` declaration.
 
 `CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported
 fully. User-defined method combinations and `:BEFORE`, `:AFTER`
