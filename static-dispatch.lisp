@@ -261,7 +261,10 @@
 			  (mapcar #'cdr <>))))
 
        (when methods
-	 (inline-method-body (first methods) args (rest methods) (should-check-types env) types))))))
+	 (let ((gensyms (loop repeat (length args) collect (gensym))))
+	   `(let ,(mapcar #'list gensyms args)
+	      (declare ,@(mapcar (curry #'list 'type) types gensyms))
+	      ,(inline-method-body (first methods) gensyms (rest methods) (should-check-types env) types))))))))
 
 
 (defun precedence-order (lambda-list precedence)
