@@ -1,6 +1,6 @@
 ;;;; static-dispatch.lisp
 ;;;;
-;;;; Copyright 2018 Alexander Gutev
+;;;; Copyright 2018-2019 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -253,7 +253,7 @@
 
      (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
 	    (match-args (order-by-precedence precedence args))
-	    (types (get-types match-args env))
+	    (types (get-return-types match-args env))
 	    (methods (-<> (aand (gf-methods gf-name) (hash-table-alist it))
 			  (order-method-specializers precedence)
 			  (applicable-methods types)
@@ -275,29 +275,6 @@
   "Orders the list ARGS by the order specified in PRECEDENCE."
 
   (mapcar (curry #'elt args) precedence))
-
-(defun get-types (args env)
-  "Determines the types of the argument forms ARGS, in the environment
-   ENV. Returns a list where each element is the type of the
-   corresponding element in ARGS."
-
-  (labels ((get-type (x)
-	     (or
-	      (match x
-		((satisfies constantp)
-		 `(eql ,(eval x)))
-
-		((satisfies symbolp)
-		 (var-type x))
-
-		((list (or 'the 'cl:the) type _)
-		 type))
-	      t))
-
-	   (var-type (var)
-	     (cdr (assoc 'type (nth-value 2 (variable-information var env))))))
-
-    (mapcar #'get-type args)))
 
 
 (defun order-method-specializers (methods precedence)

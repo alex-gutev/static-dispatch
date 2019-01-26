@@ -1,6 +1,6 @@
 ;;;; package.lisp
 ;;;;
-;;;; Copyright 2018 Alexander Gutev
+;;;; Copyright 2018-2019 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -35,7 +35,8 @@
 	:iterate
 
 	:agutil
-	:closer-environments)
+	:closer-environments
+	:cl-environments.tools)
 
   (:shadow :defmethod
 	   :defgeneric)
