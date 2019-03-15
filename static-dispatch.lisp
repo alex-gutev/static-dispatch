@@ -130,7 +130,8 @@
 	 (ensure-method-info name specializers :body body :lambda-list lambda-list)
 	 `(progn
 	    (eval-when (:compile-toplevel :load-toplevel :execute)
-	      (setf (compiler-macro-function ',name) #'gf-compiler-macro))
+	      (ignore-errors
+		(setf (compiler-macro-function ',name) #'gf-compiler-macro)))
 
 	    ,(alet `(c2mop:defmethod ,name ,@args)
 		   (if (has-eql-specializer? specializers)
