@@ -42,9 +42,9 @@
 	       :agutil
 	       :cl-environments)
 
-  :in-order-to ((asdf:test-op (asdf:test-op :static-dispatch-test))))
+  :in-order-to ((asdf:test-op (asdf:test-op :static-dispatch/test))))
 
-(asdf:defsystem #:static-dispatch-test
+(asdf:defsystem #:static-dispatch/test
   :description "Tests for static-dispatch."
   :author "Alexander Gutev"
   :license "MIT"
@@ -52,4 +52,4 @@
   :defsystem-depends-on (:prove-asdf)
   :components ((:test-file "test"))
   :perform (asdf:test-op :after (op c)
-			 (funcall (intern #.(string :run) :prove) c)))
+			 (funcall (intern #.(string :run) :prove) c :reporter :fiveam)))

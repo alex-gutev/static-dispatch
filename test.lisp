@@ -46,8 +46,6 @@
    :lambda-list
    :specializers
 
-   :get-types
-
    :precedence-order
    :order-by-precedence
    :order-method-specializers
@@ -299,22 +297,6 @@
       ;; argument and not all the specializers for that argument, of
       ;; all methods, are T then APPLICABLE-METHODS returns nil.
       (is (applicable-methods methods '(t t)) nil))))
-
-
-(defconstant +a-constant+ 'x
-  "Constant used in testing GET-TYPES")
-
-(subtest "Determining argument types"
-  ;; Test GET-TYPES function
-
-  ;; Test that if there is no information in the environment about a
-  ;; variable T is returned, and that for constants (EQL <constant
-  ;; value>) is returned.
-
-  (is (get-types '(x (+ x y) 1 +a-constant+) nil) '(t t (eql 1) (eql x)))
-
-  ;; Test THE forms
-  (is (get-types '((the number (+ x y))) nil) '(number)))
 
 
 (subtest "Ordering by generic function argument precedence order"
