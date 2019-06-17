@@ -50,7 +50,15 @@
     :accessor function-name
     :documentation
     "Symbol naming a non-generic function which implements the
-     method."))
+     method.")
+
+   (remove-on-redefine-p
+    :initarg :remove-on-redefine-p
+    :accessor remove-on-redefine-p
+    :initform nil
+    :documentation
+    "True if the method should be removed when the DEFGENERIC form is
+     re-evaluated."))
 
   (:documentation
    "Stores the body of a method and the name of a non-generic function
@@ -99,7 +107,7 @@
   (setf (gethash specializers (ensure-gf-methods gf-name))
 	value))
 
-(defun ensure-method-info (gf-name specializers &key body lambda-list)
+(defun ensure-method-info (gf-name specializers &key body lambda-list remove-on-redefine-p)
   "Ensures that the method table, withing *GENERIC-FUNCTION-TABLE*, of
    the generic function GF-NAME contains a method with specializers
    SPECIALIZERS, lambda-list LAMBDA-LIST and body BODY. If the table
@@ -108,7 +116,7 @@
 
   (aprog1
       (ensure-gethash specializers (ensure-gf-methods gf-name)
-		      (make-instance 'method-info))
+		      (make-instance 'method-info :remove-on-redefine-p remove-on-redefine-p))
     (setf (lambda-list it) lambda-list)
     (setf (specializers it) specializers)
     (setf (body it) body)))
@@ -148,19 +156,33 @@
    `(c2mop:defmethod ,name ,@args)))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
-  (iter (for option in options)
-	(match option
-	  ((list* :method args)
-	   (collect `(defmethod ,name ,@args) into methods))
+  (handler-case
+      (progn
+	(let ((methods (ensure-gf-methods name)))
+	  (iter
+	    (for (key method) in-hashtable methods)
+	    (when (remove-on-redefine-p method)
+	      (remhash key methods))))
 
-	  (_ (collect option into new-options)))
+	(mapc
+	 (lambda-match
+	   ((list* :method args)
+	    (multiple-value-bind (specializers lambda-list body) (parse-method args)
+	      (ensure-method-info name
+				  specializers
+				  :body body
+				  :lambda-list lambda-list
+				  :remove-on-redefine-p t))))
+	 options))
+    (match-error () (mark-no-dispatch name))
+    (not-supported ()))
 
-	(finally
-	 (return
-	   `(progn
-	      (c2mop:defgeneric ,name ,lambda-list ,@new-options)
-	      ,@methods
-	      (fdefinition ',name))))))
+  `(progn
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (ignore-errors
+	 (setf (compiler-macro-function ',name) #'gf-compiler-macro)))
+
+     (c2mop:defgeneric ,name ,lambda-list ,@options)))
 
 (defun parse-method (args)
   (ematch args
