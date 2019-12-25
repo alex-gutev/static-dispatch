@@ -128,8 +128,8 @@
 
   (setf (gethash gf-name *generic-function-table*) nil))
 
-
-;;;; DEFMETHOD macro
+
+;;; DEFMETHOD macro
 
 (defmacro defmethod (name &rest args)
   (or
@@ -226,8 +226,8 @@
     ((class eql-specializer)
      `(eql ,(eql-specializer-object specializer)))))
 
-
-;;;; Compiler Macro
+
+;;; Compiler Macro
 
 (defun gf-compiler-macro (whole &optional env)
   "Compiler macro function for statically dispatched generic
