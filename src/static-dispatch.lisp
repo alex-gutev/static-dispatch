@@ -231,6 +231,14 @@
 
 ;;; Compiler Macro
 
+(defmacro static-dispatch-test-hook ()
+  "A form of this macro is inserted in the output of the
+   STATIC-DISPATCH compiler macro, in order to allow certain test code
+   to be inserted, by shadowing this macro using MACROLET. The
+   global expands to NIL."
+
+  nil)
+
 (defun static-dispatch (whole &optional env)
   "Compiler macro function for statically dispatched generic
    functions."
@@ -289,6 +297,7 @@
 	 (let ((gensyms (loop repeat (length args) collect (gensym))))
 	   `(let ,(mapcar #'list gensyms args)
 	      (declare ,@(mapcar (curry #'list 'type) types gensyms))
+	      (static-dispatch-test-hook)
 	      ,(inline-method-body (first methods) gensyms (rest methods) (should-check-types env) types))))))))
 
 
