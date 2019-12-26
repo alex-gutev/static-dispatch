@@ -85,6 +85,21 @@ the `ENABLE-HOOK` function has to be called at some point, see
 https://github.com/alex-gutev/cl-environments#documentation for more
 information.
 
+### Interaction with other Compiler Macros
+
+By default Static-Dispatch does not add a compiler macro to a generic
+function which already has a compiler macro function. To statically
+dispatch such functions the `STATIC-DISPATCH` function has to be
+called manually from the compiler macro.
+
+Function: `STATIC-DISPATCH FORM &OPTIONAL ENV`
+
+Determines whether to statically dispatch the call to the generic
+function `FORM`. If so returns the body of the selected method
+otherwise returns `FORM` as is.
+
+`ENV` is the lexical environment of the generic function call.
+
 ## Differences from INLINED-GENERIC-FUNCTION
 
 Inlined-Generic-Function uses a custom generic function metaclass
