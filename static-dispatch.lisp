@@ -139,17 +139,18 @@
 	 `(progn
 	    (eval-when (:compile-toplevel :load-toplevel :execute)
 	      (ignore-errors
-		(setf (compiler-macro-function ',name) #'gf-compiler-macro)))
+		(unless (compiler-macro-function ',name)
+		  (setf (compiler-macro-function ',name) 'static-dispatch))))
 
 	    ,(alet `(c2mop:defmethod ,name ,@args)
-		   (if (has-eql-specializer? specializers)
-		       `(aprog1 ,it
-			  (ensure-method-info
-			   ',name
-			   (mapcar #'specializer->cl (method-specializers it))
-			   :body ',body
-			   :lambda-list ',lambda-list))
-		       it))))
+	       (if (has-eql-specializer? specializers)
+		   `(aprog1 ,it
+		      (ensure-method-info
+		       ',name
+		       (mapcar #'specializer->cl (method-specializers it))
+		       :body ',body
+		       :lambda-list ',lambda-list))
+		   it))))
      (match-error () (mark-no-dispatch name))
      (not-supported ()))
 
@@ -180,7 +181,8 @@
   `(progn
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (ignore-errors
-	 (setf (compiler-macro-function ',name) #'gf-compiler-macro)))
+	 (unless (compiler-macro-function ',name)
+	   (setf (compiler-macro-function ',name) 'static-dispatch))))
 
      (c2mop:defgeneric ,name ,lambda-list ,@options)))
 
@@ -229,7 +231,7 @@
 
 ;;; Compiler Macro
 
-(defun gf-compiler-macro (whole &optional env)
+(defun static-dispatch (whole &optional env)
   "Compiler macro function for statically dispatched generic
    functions."
 
