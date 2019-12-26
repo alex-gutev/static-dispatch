@@ -140,7 +140,7 @@
 	    (eval-when (:compile-toplevel :load-toplevel :execute)
 	      (ignore-errors
 		(unless (compiler-macro-function ',name)
-		  (setf (compiler-macro-function ',name) 'static-dispatch))))
+		  (setf (compiler-macro-function ',name) #'static-dispatch))))
 
 	    ,(alet `(c2mop:defmethod ,name ,@args)
 	       (if (has-eql-specializer? specializers)
@@ -182,7 +182,7 @@
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (ignore-errors
 	 (unless (compiler-macro-function ',name)
-	   (setf (compiler-macro-function ',name) 'static-dispatch))))
+	   (setf (compiler-macro-function ',name) #'static-dispatch))))
 
      (c2mop:defgeneric ,name ,lambda-list ,@options)))
 
