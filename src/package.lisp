@@ -42,7 +42,8 @@
 	   :defgeneric)
 
   (:export :defmethod
-	   :defgeneric))
+	   :defgeneric
+	   :static-dispatch))
 
 (agutil:define-merged-package :static-dispatch-cl
     :closer-environments
