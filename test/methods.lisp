@@ -1,6 +1,6 @@
-;;;; static-dispatch.asd
+;;;; methods.lisp
 ;;;;
-;;;; Copyright 2018 Alexander Gutev
+;;;; Copyright 2019 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -23,41 +23,42 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-(asdf:defsystem #:static-dispatch
-  :description "Static generic function dispatch for Common Lisp."
-  :author "Alexander Gutev"
-  :license "MIT"
-  :version "0.2.2"
-  :serial t
-  :components ((:module
-		"src"
-		:components
-		((:file "package")
-		 (:file "static-dispatch"))))
+;;;; Generic functions used in the interface tests.
 
-  :depends-on (:alexandria
-	       :anaphora
-	       :cl-arrows
-	       :iterate
-	       :trivia
-	       :closer-mop
+(defpackage :static-dispatch-interface-test
+  (:use :static-dispatch-cl
+	:alexandria
+	:cl-arrows
+	:trivia
 
-	       :agutil
-	       :cl-environments)
+	:prove))
 
-  :in-order-to ((asdf:test-op (asdf:test-op :static-dispatch/test))))
+(in-package :static-dispatch-interface-test)
 
-(asdf:defsystem #:static-dispatch/test
-  :description "Tests for static-dispatch."
-  :author "Alexander Gutev"
-  :license "MIT"
-  :depends-on (:static-dispatch :prove :prove-asdf)
-  :defsystem-depends-on (:prove-asdf)
-  :components ((:module
-		"test"
-		:components
-		((:test-file "test")
-		 (:file "methods")
-		 (:test-file "interface"))))
-  :perform (asdf:test-op :after (op c)
-			 (funcall (intern #.(string :run) :prove) c :reporter :fiveam)))
+(defgeneric add (a b))
+
+(defmethod add ((a number) (b number))
+  (list 'number (+ a b)))
+
+(defmethod add ((a string) (b string))
+  (list 'string a b))
+
+(defmethod add (a b)
+  (list a b))
+
+
+;;; The following generic function has a compiler macro which simply
+;;; returns the form as is. The purpose of this test is to ensure that
+;;; static-dispatch does not replace existing compiler macros.
+
+(defgeneric f (x))
+
+(define-compiler-macro f (&whole form &rest args)
+  (declare (ignore args))
+  form)
+
+(defmethod f ((x number))
+  x)
+
+(defmethod f ((x t))
+  nil)
