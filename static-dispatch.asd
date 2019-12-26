@@ -29,8 +29,11 @@
   :license "MIT"
   :version "0.2.2"
   :serial t
-  :components ((:file "package")
-	       (:file "static-dispatch"))
+  :components ((:module
+		"src"
+		:components
+		((:file "package")
+		 (:file "static-dispatch"))))
 
   :depends-on (:alexandria
 	       :anaphora
@@ -50,6 +53,9 @@
   :license "MIT"
   :depends-on (:static-dispatch :prove :prove-asdf)
   :defsystem-depends-on (:prove-asdf)
-  :components ((:test-file "test"))
+  :components ((:module
+		"test"
+		:components
+		((:test-file "test"))))
   :perform (asdf:test-op :after (op c)
 			 (funcall (intern #.(string :run) :prove) c :reporter :fiveam)))
