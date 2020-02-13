@@ -140,6 +140,36 @@
     (test-dispatch (add x 1) '(x 1) :test-dispatch nil)
     (test-dispatch (add x-int x-string) '(1 "hello") :test-dispatch nil)))
 
+(subtest "Functions with FTYPE Declarations"
+  (flet ((neg (x)
+	   (- x))
+
+	 (reverse-string (str)
+	   (reverse str))
+
+	 (f (x) x))
+
+    (declare (ftype (function (number) number) neg)
+	     (ftype (function (string) string) reverse-string))
+    (declare (inline add reverse-string))
+
+    (let ((x 1) (y 2)
+	  (hello "hello") (world "world"))
+      (declare (type number x y)
+	       (type string hello world))
+
+      (test-dispatch (add (neg 3) 1) '(number -2))
+      (test-dispatch (add y (neg x)) '(number 1))
+      (test-dispatch (add (neg y) (neg 5)) '(number -7))
+
+      (test-dispatch (add (reverse-string "leh") "lo") '(string "hel" "lo"))
+      (test-dispatch (add world (reverse-string hello)) '(string "world" "olleh"))
+      (test-dispatch (add (reverse-string hello) (reverse-string world)) '(string "olleh" "dlrow"))
+
+      (test-dispatch (add (f 'x) 'y) '(x y) :test-dispatch nil)
+      (test-dispatch (add (neg 3) "x") '(-3 "x") :test-dispatch nil)
+      (test-dispatch (add hello (neg 9)) '("hello" -9) :test-dispatch nil))))
+
 
 (subtest "Interaction with Other Compiler Macros"
   (isnt (compiler-macro-function 'f) #'static-dispatch
