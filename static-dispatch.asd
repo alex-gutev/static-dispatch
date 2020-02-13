@@ -57,7 +57,6 @@
 		"test"
 		:components
 		((:test-file "test")
-		 (:file "methods")
 		 (:test-file "interface"))))
   :perform (asdf:test-op :after (op c)
 			 (funcall (intern #.(string :run) :prove) c :reporter :fiveam)))

@@ -35,7 +35,48 @@
 ;;;; make use of statically dispatched generic functions and will
 ;;;; simply revert to the default standard dynamic dispatch.
 
+(defpackage :static-dispatch-interface-test
+  (:use :static-dispatch-cl
+	:alexandria
+	:cl-arrows
+	:trivia
+
+	:prove))
+
 (in-package :static-dispatch-interface-test)
+
+;;; Methods
+
+(defgeneric add (a b))
+
+(defmethod add ((a number) (b number))
+  (list 'number (+ a b)))
+
+(defmethod add ((a string) (b string))
+  (list 'string a b))
+
+(defmethod add (a b)
+  (list a b))
+
+
+;;; The following generic function has a compiler macro which simply
+;;; returns the form as is. The purpose of this test is to ensure that
+;;; static-dispatch does not replace existing compiler macros.
+
+(defgeneric f (x))
+
+(define-compiler-macro f (&whole form &rest args)
+  (declare (ignore args))
+  form)
+
+(defmethod f ((x number))
+  x)
+
+(defmethod f ((x t))
+  nil)
+
+
+;;; Tests
 
 (defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
   (with-gensyms (static?-var)
@@ -50,13 +91,16 @@
 			  call
 			  (if static-p "statically" "dynamically"))))))))
 
+(defconstant +a-constant+ 10)
+
 (plan nil)
 
 (subtest "Constant Arguments"
   (locally (declare (inline add))
     (test-dispatch (add 1 2) '(number 3))
     (test-dispatch (add "hello" "world") '(string "hello" "world"))
-    (test-dispatch (add 'x 'y) '(x y) :test-dispatch nil)))
+    (test-dispatch (add 'x 'y) '(x y) :test-dispatch nil)
+    (test-dispatch (add +a-constant+ 1) '(number 11))))
 
 (subtest "Variables with Type Declarations"
   (let ((x-int 1) (y-int 2)
