@@ -35,6 +35,24 @@
 ;;;; make use of statically dispatched generic functions and will
 ;;;; simply revert to the default standard dynamic dispatch.
 
+;;;; These tests test the use of STATIC-DISPATCH from a high-level:
+;;;;
+;;;;  1. That Generic functions are actually statically dispatched
+;;;;     when declared INLINE.
+;;;;
+;;;;  2. That the result of the generic function call is correct
+;;;;     regardless of whether they are statically dispatched or not.
+;;;;
+;;;; NOTE:
+;;;;
+;;;;  If a test of the form "F is statically dispatched" fails, this
+;;;;  means that STATIC-DISPATCH was unable to choose the appropriate
+;;;;  method for F at compile-time, thus will fallback to dynamic
+;;;;  dispatch. Programs using STATIC-DISPATCH will still function
+;;;;  correctly, provided the remaining tests don't fail, however they
+;;;;  will not be able to make use of statically dispatched generic
+;;;;  functions on the implementation on which the test fails.
+
 (defpackage :static-dispatch-interface-test
   (:use :static-dispatch-cl
 	:alexandria
