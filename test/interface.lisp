@@ -128,16 +128,19 @@
     (test-dispatch (add +a-constant+ 1) '(number 11))))
 
 (subtest "Variables with Type Declarations"
-  (let ((x-int 1) (y-int 2)
+  (let ((x-int 1) (y-int 2) (z-int 3)
 	(x-string "hello") (y-string "world")
 	(x 'x) (y 'y))
+
     (declare (type number x-int y-int)
-	     (type string x-string y-string))
+	     (type string x-string y-string)
+	     (type (eql 3) z-int))
     (declare (inline add))
 
     (test-dispatch (add x-int y-int) '(number 3))
     (test-dispatch (add 1 x-int) '(number 2))
     (test-dispatch (add y-int 1/2) '(number 5/2))
+    (test-dispatch (add x-int z-int) '(number 4))
 
     (test-dispatch (add x-string y-string) '(string "hello" "world"))
     (test-dispatch (add "hello" y-string) '(string "hello" "world"))
@@ -151,12 +154,16 @@
   (flet ((neg (x)
 	   (- x))
 
+	 (half (x)
+	   (floor x 2))
+
 	 (reverse-string (str)
 	   (reverse str))
 
 	 (f (x) x))
 
     (declare (ftype (function (number) number) neg)
+	     (ftype (function (number) (values number number)) half)
 	     (ftype (function (string) string) reverse-string))
     (declare (inline add reverse-string))
 
@@ -168,6 +175,7 @@
       (test-dispatch (add (neg 3) 1) '(number -2))
       (test-dispatch (add y (neg x)) '(number 1))
       (test-dispatch (add (neg y) (neg 5)) '(number -7))
+      (test-dispatch (add x (half y)) '(number 2))
 
       (test-dispatch (add (reverse-string "leh") "lo") '(string "hel" "lo"))
       (test-dispatch (add world (reverse-string hello)) '(string "world" "olleh"))
