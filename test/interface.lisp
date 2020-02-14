@@ -1,6 +1,6 @@
 ;;;; test.lisp
 ;;;;
-;;;; Copyright 2019 Alexander Gutev
+;;;; Copyright 2019-2020 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -169,6 +169,28 @@
       (test-dispatch (add (f 'x) 'y) '(x y) :test-dispatch nil)
       (test-dispatch (add (neg 3) "x") '(-3 "x") :test-dispatch nil)
       (test-dispatch (add hello (neg 9)) '("hello" -9) :test-dispatch nil))))
+
+(subtest "THE forms"
+  (let ((x 5)
+	(hello "hello"))
+    (declare (inline add))
+
+    (test-dispatch (add (the number (second (add 1 2)))
+			(the number (f x)))
+		   '(number 8))
+
+    (test-dispatch (add (the integer (second (add 1 2)))
+			1)
+		   '(number 4))
+
+    (test-dispatch (add 3
+			(the fixnum (second (add 5 6))))
+		   '(number 14))
+
+
+    (test-dispatch (add (the string (second (add hello "")))
+			"world")
+		   '(string "hello" "world"))))
 
 
 (subtest "Interaction with Other Compiler Macros"
