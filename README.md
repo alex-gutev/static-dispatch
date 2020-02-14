@@ -180,6 +180,14 @@ around methods.
 
 Tested on: CCL, SBCL, CLISP, ECL, CMUCL and ABCL.
 
+Currently generic functions can be statically dispatched successfully
+on SBCL and CCL without any workarounds. On the remaining listed
+implementations, generic functions can only be statically dispatch if
+the
+[`CL-ENVIRONMENTS:ENABLE-HOOK`](https://github.com/alex-gutev/cl-environments#enable-hook)
+function is called prior to compiling the source file, where static
+dispatch should be performed.
+
 ### Known Issues:
 
  * On ABCL: methods are not inlined, if the types of the arguments are
