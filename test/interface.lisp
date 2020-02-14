@@ -94,6 +94,13 @@
   nil)
 
 
+;;; Macros
+
+(defmacro pass-through (form)
+  "Expands to FORM unchanged."
+  form)
+
+
 ;;; Tests
 
 (defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
@@ -191,6 +198,37 @@
     (test-dispatch (add (the string (second (add hello "")))
 			"world")
 		   '(string "hello" "world"))))
+
+(subtest "Macros"
+  (macrolet
+      ((pass1 (x) x)
+       (pass2 (y) y)
+
+       (the-number (form) `(the number ,form))
+       (the-string (form) `(the string ,form)))
+
+    (flet ((neg (x) (- x)))
+      (declare (ftype (function (number) number) neg))
+
+      (let ((x 1) (y 2))
+	(declare (type number x y))
+	(declare (inline add))
+
+	(test-dispatch (add (pass1 x) (pass2 y)) '(number 3))
+	(test-dispatch (add (pass1 y) (pass2 (neg x))) '(number 1))
+	(test-dispatch (add (pass1 (the-number (second (add x 1))))
+			    (pass2 3))
+		       '(number 5))
+
+	(test-dispatch (add (pass-through (the-string (map 'string #'char-upcase "hello")))
+			    (pass2 "world"))
+		       '(string "HELLO" "world"))
+
+	(test-dispatch (add (pass-through 1)
+			    (pass-through "world"))
+		       '(1 "world")
+
+		       :test-dispatch nil)))))
 
 
 (subtest "Interaction with Other Compiler Macros"
