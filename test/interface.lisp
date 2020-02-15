@@ -100,6 +100,8 @@
   "Expands to FORM unchanged."
   form)
 
+(define-symbol-macro a-number 2)
+
 
 ;;; Tests
 
@@ -222,21 +224,27 @@
 	(declare (type number x y))
 	(declare (inline add))
 
-	(test-dispatch (add (pass1 x) (pass2 y)) '(number 3))
-	(test-dispatch (add (pass1 y) (pass2 (neg x))) '(number 1))
-	(test-dispatch (add (pass1 (the-number (second (add x 1))))
-			    (pass2 3))
-		       '(number 5))
+	(symbol-macrolet ((x-mac x)
+			  (number-mac (the number (second (add 1 2)))))
 
-	(test-dispatch (add (pass-through (the-string (map 'string #'char-upcase "hello")))
-			    (pass2 "world"))
-		       '(string "HELLO" "world"))
+	  (test-dispatch (add (pass1 x) (pass2 y)) '(number 3))
+	  (test-dispatch (add (pass1 y) (pass2 (neg x))) '(number 1))
+	  (test-dispatch (add (pass1 (the-number (second (add x 1))))
+			      (pass2 3))
+			 '(number 5))
 
-	(test-dispatch (add (pass-through 1)
-			    (pass-through "world"))
-		       '(1 "world")
+	  (test-dispatch (add x-mac 2) '(number 3))
+	  (test-dispatch (add a-number number-mac) '(number 5))
 
-		       :test-dispatch nil)))))
+	  (test-dispatch (add (pass-through (the-string (map 'string #'char-upcase "hello")))
+			      (pass2 "world"))
+			 '(string "HELLO" "world"))
+
+	  (test-dispatch (add (pass-through 1)
+			      (pass-through "world"))
+			 '(1 "world")
+
+			 :test-dispatch nil))))))
 
 
 (subtest "Interaction with Other Compiler Macros"
