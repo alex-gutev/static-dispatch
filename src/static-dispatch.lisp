@@ -33,6 +33,13 @@
     :documentation
     "The method function body.")
 
+   (qualifier
+    :initarg :qualifier
+    :accessor qualifier
+    :documentation
+    "The method qualifier, NIL for primary methods or :BEFORE, :AFTER,
+     :AROUND for auxiliary methods.")
+
    (lambda-list
     :initarg :lambda-list
     :accessor lambda-list
@@ -76,6 +83,8 @@
    "Error condition: A CLOS feature was used that is not supporting in
     inlining/static dispatch."))
 
+
+;;; Global Method Table
 
 (defvar *generic-function-table* (make-hash-table :test #'equal)
   "Hash table mapping generic functions to a list of methods.")
@@ -107,18 +116,23 @@
   (setf (gethash specializers (ensure-gf-methods gf-name))
 	value))
 
-(defun ensure-method-info (gf-name specializers &key body lambda-list remove-on-redefine-p)
+(defun ensure-method-info (gf-name qualifier specializers &key body lambda-list remove-on-redefine-p)
   "Ensures that the method table, withing *GENERIC-FUNCTION-TABLE*, of
-   the generic function GF-NAME contains a method with specializers
-   SPECIALIZERS, lambda-list LAMBDA-LIST and body BODY. If the table
-   does not contain a method for those specializers, a new
-   `METHOD-INFO' object is created."
+   the generic function GF-NAME contains a method with qualifier
+   QUALIFIER, specializers SPECIALIZERS, lambda-list LAMBDA-LIST and
+   body BODY. If the table does not contain a method for those
+   specializers, a new `METHOD-INFO' object is created."
 
   (aprog1
-      (ensure-gethash specializers (ensure-gf-methods gf-name)
-		      (make-instance 'method-info :remove-on-redefine-p remove-on-redefine-p))
+      (ensure-gethash
+       (list qualifier specializers) (ensure-gf-methods gf-name)
+
+       (make-instance 'method-info
+		      :specializers specializers
+		      :qualifier qualifier
+		      :remove-on-redefine-p remove-on-redefine-p))
+
     (setf (lambda-list it) lambda-list)
-    (setf (specializers it) specializers)
     (setf (body it) body)))
 
 (defun mark-no-dispatch (gf-name)
@@ -134,8 +148,11 @@
 (defmacro defmethod (name &rest args)
   (or
    (handler-case
-       (multiple-value-bind (specializers lambda-list body) (parse-method args)
-	 (ensure-method-info name specializers :body body :lambda-list lambda-list)
+       (multiple-value-bind (qualifier specializers lambda-list body)
+	   (parse-method args)
+
+	 (ensure-method-info name qualifier specializers :body body :lambda-list lambda-list)
+
 	 `(progn
 	    (eval-when (:compile-toplevel :load-toplevel :execute)
 	      (ignore-errors
@@ -147,6 +164,7 @@
 		   `(aprog1 ,it
 		      (ensure-method-info
 		       ',name
+		       ',qualifier
 		       (mapcar #'specializer->cl (method-specializers it))
 		       :body ',body
 		       :lambda-list ',lambda-list))
@@ -168,8 +186,11 @@
 	(mapc
 	 (lambda-match
 	   ((list* :method args)
-	    (multiple-value-bind (specializers lambda-list body) (parse-method args)
+	    (multiple-value-bind (qualifier specializers lambda-list body)
+		(parse-method args)
+
 	      (ensure-method-info name
+				  qualifier
 				  specializers
 				  :body body
 				  :lambda-list lambda-list
@@ -188,8 +209,12 @@
 
 (defun parse-method (args)
   (ematch args
-    ((list* (guard lambda-list (listp lambda-list)) body)
+    ((or (list* (guard lambda-list (listp lambda-list)) body)
+	 (list* (and (or :around :before :after) qualifier)
+		(guard lambda-list (listp lambda-list)) body))
+
      (multiple-value-call #'values
+       qualifier
        (parse-method-lambda-list lambda-list)
        body))))
 
@@ -270,9 +295,26 @@
     (eq (cdr (assoc 'inline decl)) 'inline)))
 
 
+
+;;; Method Inlining
+
 (defvar *current-gf* nil
   "The name of the generic function currently being inlined/statically
    dispatched.")
+
+(define-condition illegal-call-next-method-error ()
+  ((method-type
+    :reader method-type
+    :initarg method-type
+    :documentation
+    "The type of method from which CALL-NEXT-METHOD was called."))
+
+  (:documentation
+   "Condition representing an illegal call to CALL-NEXT-METHOD from within a :BEFORE, :AFTER or :AROUND method"))
+
+(cl:defmethod print-object ((e illegal-call-next-method-error) stream)
+  (format stream "CALL-NEXT-METHOD called inside ~a method" (method-type e)))
+
 
 (defun static-overload (gf-name args env)
   "Determines the types of the generic function (with name GF-NAME)
@@ -319,7 +361,12 @@
    PRECEDENCE."
 
   (flet ((order-specializers (method)
-	   (cons (order-by-precedence precedence (car method)) (cdr method))))
+	   (destructuring-bind ((qualifier specializers) . method) method
+	     (cons
+	      (list
+	       qualifier
+	       (order-by-precedence precedence specializers))
+	      method))))
     (mapcar #'order-specializers methods)))
 
 (defun applicable-methods (methods types)
@@ -344,7 +391,7 @@
 	     (cons (cdar method) (cdr method)))
 
 	   (copy-specializer (method)
-	     (cons (car method) method)))
+	     (cons (cadar method) method)))
 
     (->> (mapcar #'copy-specializer methods)
 	 (filter-methods types)
@@ -353,7 +400,20 @@
 (defun sort-methods (methods)
   "Sorts METHODS by specificity."
 
-  (sort methods #'specializer< :key #'car))
+  (sort methods #'method< :key #'car))
+
+(defun method< (s1 s2)
+  "Returns true if method with specializers and qualifier S1 should be
+   called before S2."
+
+  (flet ((qualifier< (q1 q2)
+	   (match* (q1 q2)
+	     ((:before nil) t))))
+    (destructuring-bind (q1 s1) s1
+      (destructuring-bind (q2 s2) s2
+	(if (eq q1 q2)
+	    (specializer< s1 s2)
+	    (qualifier< q1 q2))))))
 
 (defun specializer< (s1 s2)
   "Returns true if the specializer list S1 is more specific than
@@ -393,36 +453,72 @@
 
 
 (defun inline-method-body (method args next-methods &optional check-types types)
-  "Returns the a form which contains the body of METHOD inline. ARGS
+  "Returns a form which contains the body of METHOD inline. ARGS
    is either a list of the arguments passed to METHOD or a symbol
    naming a variable in which the arguments list is
    stored. NEXT-METHODS is the list of the next (less specific)
    applicable methods. TYPES is the types of the arguments as
    determined from the lexical environment."
 
-  (with-slots (lambda-list specializers body) method
-    (let ((args (if (listp args) (cons 'list args) args)))
-      (destructuring-bind (&optional next-method &rest more-methods) next-methods
-	(with-gensyms (next-arg-var next-args)
-	  `(flet ((call-next-method (&rest ,next-arg-var)
-		    (let ((,next-args (or ,next-arg-var ,args)))
-		      ,(if next-method
-			   (inline-method-body next-method next-args more-methods check-types)
-			   `(apply #'no-next-method ',*current-gf* nil ,next-args))))
+  (make-inline-method-form (qualifier method) method args
+			   :next-methods next-methods
+			   :check-types check-types
+			   :types types))
 
-		  (next-method-p ()
-		    ,(when next-method t)))
-	     (declare (ignorable #'call-next-method #'next-method-p))
-	     (block ,(block-name *current-gf*)
-	      (destructuring-bind ,lambda-list ,args
-		,(-> (subseq lambda-list 0 (length specializers))
-		     (make-ignorable-declarations))
-		,@(cond
-		   (types
-		    (list (make-type-declarations lambda-list types)))
-		   (check-types
-		    (make-type-checks lambda-list specializers)))
-		,@(body method)))))))))
+(cl:defgeneric make-inline-method-form (qualifier method args &key next-methods types check-types)
+  (:documentation
+   "Generates the inlined method body, along with the CALL-NEXT-METHOD
+    and NEXT-METHOD-P functions for a method with a given qualifier."))
+
+(cl:defmethod make-inline-method-form ((qualifier null) method args &key next-methods types check-types)
+  (let ((args (if (listp args) (cons 'list args) args)))
+    (destructuring-bind (&optional next-method &rest more-methods) next-methods
+      (with-gensyms (next-arg-var next-args)
+	`(flet ((call-next-method (&rest ,next-arg-var)
+		  (let ((,next-args (or ,next-arg-var ,args)))
+		    ,(if next-method
+			 (inline-method-body next-method next-args more-methods check-types)
+			 `(apply #'no-next-method ',*current-gf* nil ,next-args))))
+
+		(next-method-p ()
+		  ,(when next-method t)))
+	   (declare (ignorable #'call-next-method #'next-method-p))
+
+	   ,(make-inline-method-body method args types check-types))))))
+
+(cl:defmethod make-inline-method-form ((qualifier (eql :before)) method args &key next-methods types check-types)
+  (let ((list-args (if (listp args) (cons 'list args) args)))
+    (destructuring-bind (&optional next-method &rest more-methods) next-methods
+      (with-gensyms (next-args)
+	`(flet ((call-next-method (&rest ,next-args)
+		  (declare (ignore ,next-args))
+		  (error 'illegal-call-next-method-error :method-type :before))
+
+		(next-method-p ()
+		  ,(when next-method t)))
+
+	   (declare (ignorable #'call-next-method #'next-method-p))
+
+	   ,(make-inline-method-body method list-args types check-types)
+	   ,(inline-method-body next-method args more-methods check-types types))))))
+
+(defun make-inline-method-body (method args types check-types)
+  "Returns the inline method body (without the CALL-NEXT-METHOD and
+   NEXT-METHOD-P functions), of a METHOD, when applied on arguments
+   ARGS with types TYPES."
+
+  (with-slots (lambda-list specializers body) method
+    `(block ,(block-name *current-gf*)
+       (destructuring-bind ,lambda-list ,args
+	 ,(-> (subseq lambda-list 0 (length specializers))
+	      (make-ignorable-declarations))
+	 ,@(cond
+	     (types
+	      (list (make-type-declarations lambda-list types)))
+	     (check-types
+	      (make-type-checks lambda-list specializers)))
+	 ,@(body method)))))
+
 
 (defun block-name (gf-name)
   "Returns the name of the implicit block, surrounding a method of the
