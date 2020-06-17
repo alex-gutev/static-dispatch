@@ -43,7 +43,9 @@
 
   (:export :defmethod
 	   :defgeneric
-	   :static-dispatch))
+	   :static-dispatch
+
+	   :illegal-call-next-method-error))
 
 (agutil:define-merged-package :static-dispatch-cl
     :closer-environments

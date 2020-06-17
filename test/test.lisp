@@ -26,7 +26,7 @@
 ;;;; Unit Tests
 
 (defpackage :static-dispatch-test
-  (:use :common-lisp
+  (:use :static-dispatch-cl
 	:alexandria
 	:arrows
 	:trivia
@@ -45,6 +45,7 @@
    :body
    :lambda-list
    :specializers
+   :qualifier
 
    :precedence-order
    :order-by-precedence
@@ -65,52 +66,66 @@
   ;; Test parse-method function
 
   ;; Simple method with only required parameters and class specializers
-  (is-values (parse-method
-	      '(((a number) b (c character) (d t))
-		(declare (ignore d))
-		(pprint c)
-		(+ a b)))
+  (subtest "Required Arguments with Class Specializers"
+    (is-values (parse-method
+		'(((a number) b (c character) (d t))
+		  (declare (ignore d))
+		  (pprint c)
+		  (+ a b)))
 
-	     '((number t character t)
-	       (a b c d)
-	       ((declare (ignore d))
-		(pprint c)
-		(+ a b))))
+	       '(nil
+		 (number t character t)
+		 (a b c d)
+		 ((declare (ignore d))
+		  (pprint c)
+		  (+ a b)))))
 
   ;; Same method with an EQL specializer
 
-  (is-values (parse-method
-	      '(((a number) b (c character) (d t) (e (eql 3)))
-		(declare (ignore d))
-		(pprint c)
-		(+ a b)))
+  (subtest "Required Arguments with EQL specializers"
+    (is-values (parse-method
+		'(((a number) b (c character) (d t) (e (eql 3)))
+		  (declare (ignore d))
+		  (pprint c)
+		  (+ a b)))
 
-	     '((number t character t (eql 3))
-	       (a b c d e)
-	       ((declare (ignore d))
-		(pprint c)
-		(+ a b))))
+	       '(nil
+		 (number t character t (eql 3))
+		 (a b c d e)
+		 ((declare (ignore d))
+		  (pprint c)
+		  (+ a b)))))
 
   ;; Other argument types
+  (subtest "Optional, Rest and Keyword Arguments"
+    (let ((required '((a number) b (c character) (d t) (e (eql 3))))
+	  (other-args '(&optional x (y 1) &rest args &key x (y 'y y-p) (z)))
+	  (body '((declare (ignore d))
+		  (pprint c)
+		  (+ a b))))
 
-  (let ((required '((a number) b (c character) (d t) (e (eql 3))))
-	(other-args '(&optional x (y 1) &rest args &key x (y 'y y-p) (z)))
-	(body '((declare (ignore d))
-		(pprint c)
-		(+ a b))))
+      (is-values (parse-method `((,@required ,@other-args) ,@body))
+		 `(nil
+		   (number t character t (eql 3))
+		   (a b c d e ,@other-args)
+		   ,body))))
 
-    (is-values (parse-method `((,@required ,@other-args) ,@body))
-	       `((number t character t (eql 3))
-		 (a b c d e ,@other-args)
-		 ,body)))
+  (subtest ":BEFORE Qualifiers"
+    (is-values
+     (parse-method '(:before (a (b number) (c character)) (pprint c) (+ a b)))
+
+     '(:before
+       (t number character)
+       (a b c)
+
+       ((pprint c)
+	(+ a b)))))
 
   ;; Qualifiers - Should raise a MATCH-ERROR as qualifiers are not supported yet.
 
-  (is-error (parse-method '(:before (a (b number) (c character)) (pprint c) (+ a b)))
-	    'trivia:match-error)
-
-  (is-error (parse-method '(and (a (b number) (c character)) (pprint c) (+ a b)))
-	    'trivia:match-error))
+  (subtest "Unsupported Feature Errors"
+    (is-error (parse-method '(and (a (b number) (c character)) (pprint c) (+ a b)))
+	      'trivia:match-error)))
 
 ;; Generic function used in testing the DEFMETHOD macro.
 
@@ -121,73 +136,99 @@
   ;; information to the generic function method table.
 
   (let ((*generic-function-table* (make-hash-table :test #'eq)))
-    (let* ((method `(static-dispatch:defmethod equal? ((a number) (b number))
-		      (= a b))))
+    (subtest "Add Specialized Method"
+      (let* ((method `(static-dispatch:defmethod equal? ((a number) (b number))
+			(= a b))))
 
-      (macroexpand method)
+	(macroexpand method)
 
-      ;; Check that a method table was created for EQUAL?
-      (ok (gf-methods 'equal?))
+	;; Check that a method table was created for EQUAL?
+	(ok (gf-methods 'equal?))
 
-      (let ((method-info (gf-method 'equal? '(number number))))
-	;; Check that the method was added to the method table for
-	;; EQUAL?
+	(let ((method-info (gf-method 'equal? '(nil (number number)))))
+	  ;; Check that the method was added to the method table for
+	  ;; EQUAL?
 
-	(ok method-info)
-	(is (lambda-list method-info) '(a b))
-	(is (specializers method-info) '(number number))
-	(is (body method-info) (cdddr method))))
+	  (ok method-info)
+	  (is (lambda-list method-info) '(a b))
+	  (is (qualifier method-info) nil)
+	  (is (specializers method-info) '(number number))
+	  (is (body method-info) (cdddr method)))))
 
-    (let* ((method `(static-dispatch:defmethod equal? (a b)
-		      (eq a b))))
+    (subtest "Add Non-Specialized Method"
+      (let* ((method `(static-dispatch:defmethod equal? (a b)
+			(eq a b))))
 
-      (macroexpand method)
+	(macroexpand method)
 
-      ;; Check that the (NUMBER NUMBER) method is still in the method
-      ;; table
-      (ok (gf-method 'equal? '(number number)))
+	;; Check that the (NUMBER NUMBER) method is still in the method
+	;; table
+	(ok (gf-method 'equal? '(nil (number number))))
 
-      (let ((method-info (gf-method 'equal? '(t t))))
-	;; Check that the method was added to the method table for
-	;; EQUAL?
+	(let ((method-info (gf-method 'equal? '(nil (t t)))))
+	  ;; Check that the method was added to the method table for
+	  ;; EQUAL?
 
-	(ok method-info)
-	(is (lambda-list method-info) '(a b))
-	(is (specializers method-info) '(t t))
-	(is (body method-info) (cdddr method))))
+	  (ok method-info)
+	  (is (lambda-list method-info) '(a b))
+	  (is (qualifier method-info) nil)
+	  (is (specializers method-info) '(t t))
+	  (is (body method-info) (cdddr method)))))
 
-    (let* ((method `(static-dispatch:defmethod equal? ((x (eql 'all)) (y t)) t)))
+    (subtest "Add Method with EQL specializers"
+      (let* ((method `(static-dispatch:defmethod equal? ((x (eql 'all)) (y t)) t)))
 
-      ;; Evaluate DEFMETHOD form to actually create the method and add
-      ;; a method for (EQL ALL) to the generic function table
-      (eval method)
+	;; Evaluate DEFMETHOD form to actually create the method and add
+	;; a method for (EQL ALL) to the generic function table
+	(eval method)
 
-      (let ((method-info (gf-method 'equal? '((eql all) t))))
-	;; Check that the method was added to the method table for
-	;; EQUAL?
+	(let ((method-info (gf-method 'equal? '(nil ((eql all) t)))))
+	  ;; Check that the method was added to the method table for
+	  ;; EQUAL?
 
-	(ok method-info)
-	(is (lambda-list method-info) '(x y))
-	(is (specializers method-info) '((eql all) t))
-	(is (body method-info) (cdddr method))))
+	  (ok method-info)
+	  (is (lambda-list method-info) '(x y))
+	  (is (qualifier method-info) nil)
+	  (is (specializers method-info) '((eql all) t))
+	  (is (body method-info) (cdddr method)))))
 
     ;; Test Qualifiers
 
-    (macroexpand '(static-dispatch:defmethod equal? :before (x y)
+    (subtest "Add Method with :BEFORE qualifier"
+      (let ((method '(static-dispatch:defmethod equal? :before ((x integer) y)
+		      (pprint x)
+		      (pprint y))))
+
+	(macroexpand method)
+
+	;; Check Existing Methods
+	(ok (gf-method 'equal? '(nil (number number))))
+	(ok (gf-method 'equal? '(nil (t t))))
+	(ok (gf-method 'equal? '(nil ((eql 'all) t))))
+
+	(let ((method-info (gf-method 'equal? '(:before (integer t)))))
+	  (ok method-info)
+	  (is (lambda-list method-info) '(x y))
+	  (is (qualifier method-info) :before)
+	  (is (specializers method-info) '(integer t))
+	  (is (body method-info) (cddddr method)))))
+
+    ;; Test Unsupported Features
+
+    (macroexpand '(static-dispatch:defmethod equal? and (x y)
 		   (pprint x)
 		   (pprint y)))
 
 
-
     ;; Check that the method table for equal? was removed as
-    ;; qualifiers are not supported.
+    ;; method combinations are not supported.
 
     (is (gf-methods 'equal?) nil)
 
     ;; Check that even if a new method with no qualifiers is defined,
     ;; the method table will not be recreated.
 
-    (macroexpand '(static-dispatch:defmethod :before (x y)
+    (macroexpand '(static-dispatch:defmethod (x y)
 		   (pprint x)
 		   (pprint y)))
 
@@ -244,15 +285,19 @@
   (let* ((methods
 	  (mapcar
 	   #'list
-	   '((number t)
-	     (character character)
-	     (t t)
-	     (person person)
-	     (integer t)
-	     (t (eql 1))
-	     ((eql x) t)
-	     ((eql x) string)
-	     (person child)))))
+	   '((nil (number t))
+	     (:before (character t))
+	     (nil (character character))
+	     (nil (t t))
+	     (nil (hash-table t))
+	     (nil (person person))
+	     (nil (integer t))
+	     (nil (t (eql 1)))
+	     (nil ((eql x) t))
+	     (nil ((eql x) string))
+	     (:before (number number))
+	     (nil (person child))
+	     (:before (integer t))))))
 
     (subtest "Method ordering based on specializer ordering"
       ;; Test SORT-METHODS function
@@ -260,38 +305,66 @@
       (is (sort-methods (copy-list methods))
 	  (mapcar
 	   #'list
-	   '(((eql x) string)
-	     ((eql x) t)
+	   '((:before (character t))
+	     (:before (integer t))
+	     (:before (number number))
+	     (nil ((eql x) string))
+	     (nil ((eql x) t))
+	     (nil (character character))
+	     (nil (person child))
+	     (nil (person person))
+	     (nil (integer t))
+	     (nil (number t))
+	     (nil (hash-table t))
 
-	     (character character)
-	     (person child)
-	     (person person)
-	     (integer t)
-	     (number t)
-
-	     (t (eql 1))
-	     (t t)))))
+	     (nil (t (eql 1)))
+	     (nil (t t))))))
 
     (subtest "Determining the applicable methods"
       ;; Test APPLICABLE-METHODS function
 
       (is (applicable-methods methods '(integer integer))
-	  (mapcar #'list '((number t) (t t) (integer t))))
+	  (mapcar
+	   #'list
+	   '((nil (number t))
+	     (nil (t t))
+	     (nil (integer t))
+	     (:before (number number))
+	     (:before (integer t)))))
 
       (is (applicable-methods methods '(number number))
-	  (mapcar #'list '((number t) (t t))))
+	  (mapcar
+	   #'list
+	   '((nil (number t))
+	     (nil (t t))
+	     (:before (number number)))))
 
-      (is (applicable-methods methods '(number t))
-	  (mapcar #'list '((number t) (t t))))
+      (is (applicable-methods methods '(number t)) nil)
+
+      (is (applicable-methods methods '(hash-table t))
+	  (mapcar
+	   #'list
+	   '((nil (t t))
+	     (nil (hash-table t)))))
 
       (is (applicable-methods methods '(child child))
-	  (mapcar #'list '((t t) (person person) (person child))))
+	  (mapcar
+	   #'list
+	   '((nil (t t))
+	     (nil (person person))
+	     (nil (person child)))))
 
       (is (applicable-methods methods '(child person))
-	  (mapcar #'list '((t t) (person person))))
+	  (mapcar
+	   #'list
+	   '((nil (t t))
+	     (nil (person person)))))
 
       (is (applicable-methods methods '((eql x) number))
-	  (mapcar #'list '((t t) ((eql x) t))))
+	  (mapcar
+	   #'list
+	   '((nil (t t))
+	     (nil ((eql x) t)))))
 
       ;; Check that if there is not enough type information for an
       ;; argument and not all the specializers for that argument, of
@@ -313,15 +386,40 @@
   (is (order-method-specializers
        (mapcar
 	#'list
-	'((number t character)
-	  (integer t t)
-	  (t t t)))
+	'((nil (number t character))
+	  (:before (integer t t))
+	  (nil (t t t))))
        '(2 0 1))
       (mapcar
        #'list
-       '((character number t)
-	 (t integer t)
-	 (t t t)))))
+       '((nil (character number t))
+	 (:before (t integer t))
+	 (nil (t t t))))))
+
+(defvar *gensym-map*)
+
+(defun form= (got expected)
+  "Returns true if the form GOT is equivalent to EXPECTED. If EXPECTED
+   is a symbol beginning with $, it represents a GENSYM'd
+   symbol. Further occurrences of EXPECTED will be compared to the
+   first value of GOT, to which EXPECTED was compared."
+
+  (match* (got expected)
+    (((cons gh gt) (cons eh et))
+     (and (form= gh eh)
+	  (form= gt et)))
+
+    (((type symbol) (type symbol))
+     (if (starts-with #\$ (symbol-name expected))
+	 (eq got (ensure-gethash expected *gensym-map* got))
+	 (eq got expected)))
+
+    ((_ _) (equal got expected))))
+
+(defmacro is-form (got expected &rest args)
+  `(let ((*gensym-map* (make-hash-table :test #'eq)))
+     (is ,got ,expected :test #'form= ,@args)))
+
 
 (subtest "Method inlining"
   ;; Test the BLOCK-NAME function
@@ -334,226 +432,164 @@
   (let ((*check-types*)
 	(*current-gf* 'equal?)
 	(method1 (make-instance 'method-info
-				:body '(= a b)
+				:body '((= a b))
 				:lambda-list '(a b &optional c)
+				:qualifier nil
 				:specializers '(number number)))
 	(method2 (make-instance 'method-info
-				:body '(eq x y)
+				:body '((eq x y))
 				:lambda-list '(x y &optional c)
-				:specializers '(t t))))
+				:qualifier nil
+				:specializers '(t t)))
+
+	(method3 (make-instance 'method-info
+				:body '((pprint n1)
+					(pprint n2))
+				:lambda-list '(n1 n2 &optional z)
+				:qualifier :before
+				:specializers '(number t))))
+
     (declare (special *check-types*))
 
-    (block inline-method-test
-      (macrolet ((fail-test (desc)
-		   "Fail test with description DESC and skip remaining
-                    tests."
+    (subtest "One Next Method"
+      (is-form
+       (inline-method-body method1 '((+ u v) 3) (list method2) nil '(integer integer))
+       `(flet ((call-next-method (&rest $args1)
+		 (let (($next1 (or $args1 (list (+ u v) 3))))
+		   (flet ((call-next-method (&rest $args2)
+			    (let (($next2 (or $args2 $next1)))
+			      (apply #'no-next-method 'equal? nil $next2)))
 
-		   `(progn
-		      (fail ,desc)
-		      (return-from inline-method-test nil))))
+			  (next-method-p () nil))
 
-	(labels ((test-inline-method (args method next-methods &optional *check-types* types)
-		   "Test the result of inlining METHOD, with next
-                    methods NEXT-METHODS and arguments ARGS."
+		     (declare (ignorable #'call-next-method #'next-method-p))
 
-		   (declare (special *check-types*))
+		     (block equal?
+		       (destructuring-bind (x y &optional c) $next1
+			 (declare (ignorable x y))
+			 (eq x y))))))
 
-		   (-> (inline-method-body method args next-methods *check-types* types)
-		       (test-inline-form args method next-methods types)))
+	       (next-method-p () t))
+	  (declare (ignorable #'call-next-method #'next-method-p))
 
-		 (test-inline-form (form args method next-methods &optional types)
-		   "Test whether the inline method form, FORM, is
-                    correct for METHOD, next methods NEXT-METHODS and
-                    arguments ARGS."
+	  (block equal?
+	    (destructuring-bind (a b &optional c) (list (+ u v) 3)
+	      (declare (ignorable a b))
+	      (declare (type integer a) (type integer b))
 
-		   (match form
-		     ((list 'static-dispatch-cl:flet (list* fns)
-			    '(static-dispatch-cl:declare (ignorable #'static-dispatch-cl:call-next-method #'static-dispatch-cl:next-method-p))
-			    body)
-		      (let ((args (if (listp args) `(list ,@args) args)))
-			(test-flet-fns fns args next-methods)
-			(test-flet-body body args method types)
+	      (= a b))))))
 
-			(pass "Correct inline method form.")))
+    (subtest "No Next Methods"
+      (is-form
+       (inline-method-body method2 '(y z) nil t)
+       `(flet ((call-next-method (&rest $args)
+		 (let (($next (or $args (list y z))))
+		   (apply #'no-next-method 'equal? nil $next)))
 
-		     (_
-		      (fail-test (format nil "Incorrect inline method form: ~s." form)))))
+	       (next-method-p () nil))
+	  (declare (ignorable #'call-next-method #'next-method-p))
 
-		 (test-flet-fns (fns args next-methods)
-		   "Tests whether the lexical function definitions,
-                    FNS, for CALL-NEXT-METHOD and NEXT-METHOD-P are
-                    correct."
+	  (block equal?
+	    (destructuring-bind (x y &optional c) (list y z)
+	      (declare (ignorable x y))
+	      (check-type x t)
+	      (check-type y t)
 
-		   (match fns
-		     ((list
-		       (list* 'static-dispatch-cl:call-next-method next-fn)
-		       (list* 'static-dispatch-cl:next-method-p next-p-fn))
+	      (eq x y))))))
 
-		      (test-call-next-method next-fn args next-methods)
-		      (test-next-method-p next-p-fn next-methods)
+    (subtest "With Type Checks"
+      (is-form
+       (inline-method-body method1 '((+ u v) 3) (list method2) t '(number number))
 
-		      (pass "FLET definitions for CALL-NEXT-METHOD and NEXT-METHOD-p correct."))
+       `(flet ((call-next-method (&rest $args1)
+		 (let (($next1 (or $args1 (list (+ u v) 3))))
+		   (flet ((call-next-method (&rest $args2)
+			    (let (($next2 (or $args2 $next1)))
+			      (apply #'no-next-method 'equal? nil $next2)))
 
-		     (_
-		      (fail-test (format nil "FLET definitions for CALL-NEXT-METHOD and NEXT-METHOD-P incorrect: ~s." fns)))))
+			  (next-method-p () nil))
 
+		     (declare (ignorable #'call-next-method #'next-method-p))
 
-		 ;; FLET Body
+		     (block equal?
+		       (destructuring-bind (x y &optional c) $next1
+			 (declare (ignorable x y))
+			 (check-type x t)
+			 (check-type y t)
+			 (eq x y))))))
 
-		 (test-flet-body (body args method types)
-		   "Tests whether the body of the FLET form,
-                    containing the actual inline method body, is
-                    correct."
+	       (next-method-p () t))
 
-		   (with-slots (lambda-list specializers) method
-		     (let ((req-args (subseq lambda-list 0 (length specializers))))
-		      (match body
-			((list 'static-dispatch-cl:block (equal (block-name *current-gf*))
-			       (list* 'static-dispatch-cl:destructuring-bind
-				      (equal lambda-list)
-				      (equal args)
-				      (list 'static-dispatch-cl:declare
-					    (list* 'ignorable
-						   (equal req-args)))
-				      body))
+	  (declare (ignorable #'call-next-method #'next-method-p))
 
-			 (test-method-body body (listp args) method types)
+	  (block equal?
+	    (destructuring-bind (a b &optional c) (list (+ u v) 3)
+	      (declare (ignorable a b))
+	      (declare (type number a) (type number b))
 
-			 (pass "Body of inline FLET form is correct."))
+	      (= a b))))))
 
-			(_
-			 (fail-test (format nil "Body of inline FLET form is incorrect: ~s." body)))))))
+    (subtest "With :BEFORE Method"
+      (is-form
+       (inline-method-body method3 '((f x) (* z 4)) (list method1 method2) nil '(fixnum integer))
 
-		 (test-method-body (body decl-p method types)
-		   "Tests whether the inline method body matches the
-                    body of METHOD. If DECL-P is true then local type
-                    declarations for the arguments are expected."
+       `(flet ((call-next-method (&rest $args1)
+		 (declare (ignore $args1))
+		 (error 'illegal-call-next-method-error :method-type :before))
 
-		   (with-slots (lambda-list specializers) method
+	       (next-method-p () t))
+	  (declare (ignorable #'call-next-method #'next-method-p))
 
-		    (match body
-		      ((guard
-			(list* (list* 'static-dispatch-cl:declare declarations)
-			       (equal (body method)))
-			decl-p)
+	  (block equal?
+	    (destructuring-bind (n1 n2 &optional z) (list (f x) (* z 4))
+	      (declare (ignorable n1 n2))
+	      (declare (type fixnum n1) (type integer n2))
+	      (pprint n1)
+	      (pprint n2)))
 
-		       ;; Test declarations
+	  (flet ((call-next-method (&rest $args2)
+		   (let (($next2 (or $args2 (list (f x) (* z 4)))))
+		     (flet ((call-next-method (&rest $args3)
+			      (let (($next3 (or $args3 $next2)))
+				(apply #'no-next-method 'equal? nil $next3)))
 
-		       (if (equal declarations (mapcar (curry #'list 'type) types lambda-list))
-			   (pass "Method argument type declarations correct.")
-			   (fail-test (format nil "Incorrect method argument type declarations: ~s." declarations)))
+			    (next-method-p () nil))
 
-		       (pass "Inline method body matches method body."))
+		       (declare (ignorable #'call-next-method #'next-method-p))
 
-		      (body
+		       (block equal?
+			 (destructuring-bind (x y &optional c) $next2
+			   (declare (ignorable x y))
+			   (eq x y))))))
 
-		       (or
-			(if *check-types*
-			    (equal (test-check-type body lambda-list specializers) (body method))
-			    (equal body (body method)))
-			(trivia.fail:fail))
+		 (next-method-p () t))
 
-		       (pass "Inline method body matches method body."))
+	    (declare (ignorable #'call-next-method #'next-method-p))
 
-		      (_
-		       (fail-test (format nil "Inline BODY does not match method body: ~s." body))))))
+	    (block equal?
+	      (destructuring-bind (a b &optional c) (list (f x) (* z 4))
+		(declare (ignorable a b))
+		(declare (type fixnum a) (type integer b))
 
-		 (test-check-type (body args types)
-		   "Check whether the first few forms of BODY are
-                    CHECK-TYPE forms for the variables in ARGS and the
-                    corresponding types in TYPES."
+		(= a b)))))))
 
-		   (if types
-		       (match body
-			 ((list* (list 'static-dispatch-cl:check-type
-				       (eql (first args))
-				       (equal (first types)))
-				 body)
+    ;; ;; Test SETF methods
 
-			  (test-check-type body (rest args) (rest types)))
+    (let ((*current-gf* '(setf field)))
+      (is-form
+       (inline-method-body method2 '(a b) nil nil '(t t))
+       `(flet ((call-next-method (&rest $args)
+		 (let (($next (or $args (list a b))))
+		   (apply #'no-next-method '(setf field) nil $next)))
 
-			 (_ (fail-test (format nil "Incorrect type checks in method body: ~s." body))))
-		       body))
+	       (next-method-p () nil))
 
+	  (declare (ignorable #'call-next-method #'next-method-p))
 
-		 ;; Test NEXT-METHOD-P
-
-		 (test-next-method-p (fn next-methods)
-		   "Tests whether the NEXT-METHOD-P function
-                    definition is correct."
-
-		   (match fn
-		     ((list nil (eql (and next-methods t)))
-		      (pass "NEXT-METHOD-P definition is correct."))
-
-		     (_
-		      (fail-test (format nil "Incorrect NEXT-METHOD-P definition: ~s." fn)))))
-
-
-		 ;; Test CALL-NEXT-METHOD
-
-		 (test-call-next-method (fn args next-methods)
-		   "Tests whether the CALL-NEXT-METHOD function
-                    definition is correct."
-
-		   (match fn
-		     ((list
-		       (list '&rest fn-arg)
-		       body)
-
-		      (test-next-method-body body fn-arg args next-methods)
-		      (pass "CALL-NEXT-METHOD definition is correct."))
-
-		     (_
-		      (fail-test (format nil "Incorrect CALL-NEXT-METHOD definition: ~s." fn)))))
-
-		 (test-next-method-body (body fn-arg args next-methods)
-		   "Tests whether the body of the CALL-NEXT-METHOD
-                    function is correct."
-
-		   (match body
-		     ((list
-		       'static-dispatch-cl:let
-		       (list (list next-args next-args-init))
-		       body)
-
-		      (test-next-args-initform next-args-init fn-arg args)
-
-		      (if next-methods
-			  (test-inline-form body next-args (first next-methods) (rest next-methods))
-			  (test-no-next-method body next-args))
-
-		      (pass "Body of CALL-NEXT-METHOD is correct."))
-
-		     (_ (fail-test (format nil "Incorrect CALL-NEXT-METHOD body: ~s" body)))))
-
-		 (test-next-args-initform (form fn-arg args)
-		   "Tests whether the init-form of the variable,
-                    storing the arguments passed to the next method,
-                    is correct."
-
-		   (match form
-		     ((list 'static-dispatch-cl:or (eql fn-arg) (equal args))
-		      (pass "Next method arguments are correct."))
-
-		     (_ (fail-test (format nil "Incorrect next method arguments: ~s." form)))))
-
-		 (test-no-next-method (body args)
-		   "Tests whether the call to NO-NEXT-METHOD is correct."
-
-		   (if (equal `(apply #'static-dispatch-cl:no-next-method ',*current-gf* nil ,args) body)
-		       (pass "Call to NO-NEXT-METHOD is correct.")
-		       (fail-test (format nil "Incorrect NO-NEXT-METHOD call: ~s." body)))))
-
-	  (test-inline-method '((+ u v) 3) method1 (list method2) nil '(integer integer))
-	  (test-inline-method '(y z) method2 nil t)
-
-	  ;; Test with type-checks
-	  (test-inline-method '((+ u v) 3) method1 (list method2) t '(number number))
-
-	  ;; Test SETF methods
-
-	  (let ((*current-gf* '(setf field)))
-	    (test-inline-method '(a b) method2 nil nil '(t t))))))))
+	  (block field
+	    (destructuring-bind (x y &optional c) (list a b)
+	      (declare (ignorable x y))
+	      (declare (type t x) (type t y))
+	      (eq x y))))))))
 
 (finalize)
