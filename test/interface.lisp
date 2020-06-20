@@ -63,7 +63,7 @@
 
 (in-package :static-dispatch-interface-test)
 
-;;; Methods
+;;; Generic Function with Primary Methods
 
 (defgeneric add (a b))
 
@@ -75,6 +75,21 @@
 
 (defmethod add (a b)
   (list a b))
+
+
+;;; Generic Function with Auxiliary Methods
+
+(defgeneric my-eq (a b))
+
+(defmethod my-eq ((a number) (b number))
+  (= a b))
+
+(defmethod my-eq (a b)
+  (eq a b))
+
+
+(defmethod my-eq :before ((a number) (b number))
+  (format t "Before Numbers: ~a = ~a" a b))
 
 
 ;;; The following generic function has a compiler macro which simply
@@ -111,7 +126,12 @@
        (declare (ignorable ,static?-var))
        (macrolet ((static-dispatch::static-dispatch-test-hook ()
 		    `(setf ,',static?-var t)))
-	 (is ,call ,result)
+
+	 ;; Suppress Output From Call
+	 (is
+	  (with-open-stream (*standard-output* (make-broadcast-stream)) ,call)
+	  ,result)
+
 	 ,(when test-dispatch
 	    `(is ,static?-var ,static-p
 		 ,(format nil "~a ~a dispatched"
@@ -246,6 +266,15 @@
 
 			 :test-dispatch nil))))))
 
+
+(subtest "Auxiliary Methods"
+  ;; Suppress Output from :BEFORE method
+  (locally (declare (inline my-eq))
+    (test-dispatch (my-eq 1/2 0.5) t)
+    (test-dispatch (my-eq 1 2) nil)
+    (test-dispatch (my-eq "x" 'x) nil)
+
+    (is-print (my-eq 1 2) "Before Numbers: 1 = 2")))
 
 (subtest "Interaction with Other Compiler Macros"
   (isnt (compiler-macro-function 'f) #'static-dispatch
