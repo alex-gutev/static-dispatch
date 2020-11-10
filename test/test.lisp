@@ -313,9 +313,9 @@
 	     (nil (character character))
 	     (nil (person child))
 	     (nil (person person))
+	     (nil (hash-table t))
 	     (nil (integer t))
 	     (nil (number t))
-	     (nil (hash-table t))
 
 	     (nil (t (eql 1)))
 	     (nil (t t))))))

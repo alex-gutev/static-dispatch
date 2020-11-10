@@ -409,6 +409,7 @@
   (flet ((qualifier< (q1 q2)
 	   (match* (q1 q2)
 	     ((:before nil) t))))
+
     (destructuring-bind (q1 s1) s1
       (destructuring-bind (q2 s2) s2
 	(if (eq q1 q2)
@@ -419,37 +420,47 @@
   "Returns true if the specializer list S1 is more specific than
    specializer list S2."
 
-  (match* (s1 s2)
-    (((list* (list 'eql o1) s1)
-      (list* (list 'eql o2) s2))
+  (labels ((specializer< (s1 s2)
+	     (match* (s1 s2)
+	       (((list* (list 'eql o1) s1)
+		 (list* (list 'eql o2) s2))
 
-     (and (eql o1 o2) (specializer< s1 s2)))
+		(if (eql o1 o2)
+		    (specializer< s1 s2)
+		    :equal))
 
-    (((list* (list 'eql _) _) _)
-     t)
+	       (((list* (list 'eql _) _) _)
+		:less)
 
-    ((_ (list* (list 'eql _) _))
-     nil)
+	       ((_ (list* (list 'eql _) _))
+		:greater)
 
-    (((list* type1 s1)
-      (list* type2 s2))
+	       (((list* type1 s1)
+		 (list* type2 s2))
 
-     (let ((class1 (find-class type1))
-	   (class2 (find-class type2)))
+		(let ((class1 (find-class type1))
+		      (class2 (find-class type2)))
 
-       (ensure-finalized class1)
-       (ensure-finalized class2)
+		  (ensure-finalized class1)
+		  (ensure-finalized class2)
 
-       (let ((prec1 (rest (class-precedence-list class1)))
-	     (prec2 (rest (class-precedence-list class2))))
-	 (cond
-	   ((member class2 prec1) t)
-	   ((member class1 prec2) nil)
-	   ((eq class1 class2) (specializer< s1 s2))
-	   (t
-	    (if (and s1 s2)
-		(specializer< s1 s2)
-		(string< (class-name class1) (class-name class2))))))))))
+		  (let ((prec1 (rest (class-precedence-list class1)))
+			(prec2 (rest (class-precedence-list class2))))
+		    (cond
+		      ((member class2 prec1) :less)
+		      ((member class1 prec2) :greater)
+		      ((eq class1 class2) (specializer< s1 s2))
+		      (t
+		       (or
+			(when (and s1 s2)
+			  (let ((order (specializer< s1 s2)))
+			    (unless (eq order :equal)
+			      order)))
+
+			(if (string< (class-name class1) (class-name class2))
+			    :less
+			    :greater))))))))))
+    (eq (specializer< s1 s2) :less)))
 
 
 (defun inline-method-body (method args next-methods &optional check-types types)
