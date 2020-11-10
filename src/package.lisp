@@ -30,7 +30,7 @@
 (defpackage #:static-dispatch
   (:use :alexandria
 	:anaphora
-	:cl-arrows
+	:arrows
 	:trivia
 	:iterate
 

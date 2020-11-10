@@ -37,7 +37,7 @@
 
   :depends-on (:alexandria
 	       :anaphora
-	       :cl-arrows
+	       :arrows
 	       :iterate
 	       :trivia
 	       :closer-mop

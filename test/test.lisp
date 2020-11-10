@@ -28,7 +28,7 @@
 (defpackage :static-dispatch-test
   (:use :common-lisp
 	:alexandria
-	:cl-arrows
+	:arrows
 	:trivia
 
 	:prove)

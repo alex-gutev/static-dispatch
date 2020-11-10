@@ -56,7 +56,7 @@
 (defpackage :static-dispatch-interface-test
   (:use :static-dispatch-cl
 	:alexandria
-	:cl-arrows
+	:arrows
 	:trivia
 
 	:prove))
