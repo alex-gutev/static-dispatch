@@ -51,7 +51,7 @@
   :description "Tests for static-dispatch."
   :author "Alexander Gutev"
   :license "MIT"
-  :depends-on (:static-dispatch :prove :prove-asdf)
+  :depends-on (:static-dispatch :cl-interpol :prove :prove-asdf)
   :defsystem-depends-on (:prove-asdf)
   :components ((:module
 		"test"

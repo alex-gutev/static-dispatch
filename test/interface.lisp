@@ -63,6 +63,8 @@
 
 (in-package :static-dispatch-interface-test)
 
+(named-readtables:in-readtable :interpol-syntax)
+
 ;;; Generic Function with Primary Methods
 
 (defgeneric add (a b))
@@ -89,7 +91,10 @@
 
 
 (defmethod my-eq :before ((a number) (b number))
-  (format t "Before Numbers: ~a = ~a" a b))
+  (format t "Before Numbers: ~a = ~a~%" a b))
+
+(defmethod my-eq :before ((a integer) (b integer))
+  (format t "Before Integer: ~a = ~a~%" a b))
 
 
 ;;; The following generic function has a compiler macro which simply
@@ -266,7 +271,6 @@
 
 			 :test-dispatch nil))))))
 
-
 (subtest "Auxiliary Methods"
   ;; Suppress Output from :BEFORE method
   (locally (declare (inline my-eq))
@@ -274,7 +278,8 @@
     (test-dispatch (my-eq 1 2) nil)
     (test-dispatch (my-eq "x" 'x) nil)
 
-    (is-print (my-eq 1 2) "Before Numbers: 1 = 2")))
+    (is-print (my-eq 1/2 2/3) #?"Before Numbers: 1/2 = 2/3\n")
+    (is-print (my-eq 1 2) #?"Before Integer: 1 = 2\nBefore Numbers: 1 = 2\n")))
 
 (subtest "Interaction with Other Compiler Macros"
   (isnt (compiler-macro-function 'f) #'static-dispatch
