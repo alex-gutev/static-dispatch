@@ -96,6 +96,11 @@
 (defmethod my-eq :before ((a integer) (b integer))
   (format t "Before Integer: ~a = ~a~%" a b))
 
+(defmethod my-eq :after ((a number) (b number))
+  (format t "After Numbers: ~a = ~a~%" a b))
+
+(defmethod my-eq :after ((a integer) (b integer))
+  (format t "After Integer: ~a = ~a~%" a b))
 
 ;;; The following generic function has a compiler macro which simply
 ;;; returns the form as is. The purpose of this test is to ensure that
@@ -272,14 +277,13 @@
 			 :test-dispatch nil))))))
 
 (subtest "Auxiliary Methods"
-  ;; Suppress Output from :BEFORE method
   (locally (declare (inline my-eq))
     (test-dispatch (my-eq 1/2 0.5) t)
     (test-dispatch (my-eq 1 2) nil)
     (test-dispatch (my-eq "x" 'x) nil)
 
-    (is-print (my-eq 1/2 2/3) #?"Before Numbers: 1/2 = 2/3\n")
-    (is-print (my-eq 1 2) #?"Before Integer: 1 = 2\nBefore Numbers: 1 = 2\n")))
+    (is-print (my-eq 1/2 2/3) #?"Before Numbers: 1/2 = 2/3\nAfter Numbers: 1/2 = 2/3\n")
+    (is-print (my-eq 1 2) #?"Before Integer: 1 = 2\nBefore Numbers: 1 = 2\nAfter Numbers: 1 = 2\nAfter Integer: 1 = 2\n")))
 
 (subtest "Interaction with Other Compiler Macros"
   (isnt (compiler-macro-function 'f) #'static-dispatch
