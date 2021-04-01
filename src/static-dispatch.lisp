@@ -340,7 +340,7 @@
 	   `(let ,(mapcar #'list gensyms args)
 	      (declare ,@(mapcar (curry #'list 'type) types gensyms))
 	      (static-dispatch-test-hook)
-	      ,(inline-method-body (first methods) gensyms (rest methods) (should-check-types env) types))))))))
+	      ,(inline-methods methods gensyms (should-check-types env) types))))))))
 
 
 (defun precedence-order (lambda-list precedence)
@@ -408,13 +408,21 @@
 
   (flet ((qualifier< (q1 q2)
 	   (match* (q1 q2)
-	     ((:before nil) t))))
+	     ((:before (not :before)) t)
+	     (((not :after) :after) t))))
 
     (destructuring-bind (q1 s1) s1
       (destructuring-bind (q2 s2) s2
-	(if (eq q1 q2)
-	    (specializer< s1 s2)
-	    (qualifier< q1 q2))))))
+	(cond
+	  ((and (eq q1 q2)
+		(eq q1 :after))
+	   (specializer< s2 s1))
+
+	  ((eq q1 q2)
+	   (specializer< s1 s2))
+
+	  (t
+	   (qualifier< q1 q2)))))))
 
 (defun specializer< (s1 s2)
   "Returns true if the specializer list S1 is more specific than
@@ -462,42 +470,73 @@
 			    :greater))))))))))
     (eq (specializer< s1 s2) :less)))
 
+(defun inline-methods (methods args &optional check-types types)
+  "Return a form which contains the body of all the applicable
+   methods (METHODS) inline, starting with the most specific method.
 
-(defun inline-method-body (method args next-methods &optional check-types types)
-  "Returns a form which contains the body of METHOD inline. ARGS
-   is either a list of the arguments passed to METHOD or a symbol
-   naming a variable in which the arguments list is
-   stored. NEXT-METHODS is the list of the next (less specific)
-   applicable methods. TYPES is the types of the arguments as
-   determined from the lexical environment."
+   ARGS is either a list of the arguments passed to the methods or a
+   symbol naming a variable in which the argument list is stored.
 
-  (make-inline-method-form (qualifier method) method args
-			   :next-methods next-methods
-			   :check-types check-types
-			   :types types))
+   If CHECK-TYPES is true CHECK-TYPES forms are inserted to check the
+   types of the arguments to CALL-NEXT-METHOD.
 
-(cl:defgeneric make-inline-method-form (qualifier method args &key next-methods types check-types)
-  (:documentation
-   "Generates the inlined method body, along with the CALL-NEXT-METHOD
-    and NEXT-METHOD-P functions for a method with a given qualifier."))
+   TYPES is a list of the argument types, determined from the lexical
+   environment."
 
-(cl:defmethod make-inline-method-form ((qualifier null) method args &key next-methods types check-types)
-  (let ((args (if (listp args) (cons 'list args) args)))
-    (destructuring-bind (&optional next-method &rest more-methods) next-methods
-      (with-gensyms (next-arg-var next-args)
-	`(flet ((call-next-method (&rest ,next-arg-var)
-		  (let ((,next-args (or ,next-arg-var ,args)))
-		    ,(if next-method
-			 (inline-method-body next-method next-args more-methods check-types)
-			 `(apply #'no-next-method ',*current-gf* nil ,next-args))))
+  (flet
+      ((make-before (methods)
+	 (when methods
+	   (make-before-method-form
+	    (first methods) args (rest methods)
+	    :check-types check-types
+	    :types types)))
 
-		(next-method-p ()
-		  ,(when next-method t)))
-	   (declare (ignorable #'call-next-method #'next-method-p))
+       (make-primary (methods before)
+	 (let ((form
+		(make-primary-method-form
+		 (first methods) args (rest methods)
+		 :check-types check-types
+		 :types types)))
 
-	   ,(make-inline-method-body method args types check-types))))))
+	   (if before
+	       `(progn ,before ,form)
+	       form)))
 
-(cl:defmethod make-inline-method-form ((qualifier (eql :before)) method args &key next-methods types check-types)
+       (make-after (methods primary)
+	 (if methods
+	     `(prog1 ,primary
+		,(make-after-method-form
+		  (first methods) args (rest methods)
+		  :check-types check-types
+		  :types types))
+
+	     primary)))
+
+    (let ((before (remove-if-not (curry #'eql :before) methods :key #'qualifier))
+	  (primary (remove-if-not #'null methods :key #'qualifier))
+	  (after (remove-if-not (curry #'eql :after) methods :key #'qualifier)))
+
+      (->> (make-before before)
+	   (make-primary primary)
+	   (make-after after)))))
+
+(defun make-before-method-form (method args next-methods &key check-types types)
+  "Return a form containing the bodies of the :BEFORE methods inline.
+
+   METHOD is the first :BEFORE method to execute.
+
+   ARGS is the list of arguments or the name of the argument list
+   variable.
+
+   NEXT-METHODS is the list of the following :BEFORE methods to be
+   executed.
+
+   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
+   should be inserted.
+
+   TYPES is the list of the types of the arguments as determined from
+   the lexical environment."
+
   (let ((list-args (if (listp args) (cons 'list args) args)))
     (destructuring-bind (&optional next-method &rest more-methods) next-methods
       (with-gensyms (next-args)
@@ -511,7 +550,45 @@
 	   (declare (ignorable #'call-next-method #'next-method-p))
 
 	   ,(make-inline-method-body method list-args types check-types)
-	   ,(inline-method-body next-method args more-methods check-types types))))))
+	   ,@(when next-method
+	       (list
+		(make-before-method-form next-method args more-methods
+					 :check-types check-types
+					 :types types))))))))
+
+(defun make-primary-method-form (method args next-methods &key check-types types)
+  "Return a form containing the bodies of the primary method inline.
+
+   METHOD is the primary method to be executed.
+
+   ARGS is the list of arguments or the name of the argument list
+   variable.
+
+   NEXT-METHODS is the list of the following applicable primary
+   methods.
+
+   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
+   should be inserted.
+
+   TYPES is the list of the types of the arguments as determined from
+   the lexical environment."
+
+  (let ((args (if (listp args) (cons 'list args) args)))
+    (destructuring-bind (&optional next-method &rest more-methods) next-methods
+      (with-gensyms (next-arg-var next-args)
+	`(flet ((call-next-method (&rest ,next-arg-var)
+		  (let ((,next-args (or ,next-arg-var ,args)))
+		    ,(if next-method
+			 (make-primary-method-form
+			  next-method next-args more-methods
+			  :check-types check-types)
+			 `(apply #'no-next-method ',*current-gf* nil ,next-args))))
+
+		(next-method-p ()
+		  ,(when next-method t)))
+	   (declare (ignorable #'call-next-method #'next-method-p))
+
+	   ,(make-inline-method-body method args types check-types))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -529,6 +606,42 @@
 	     (check-types
 	      (make-type-checks lambda-list specializers)))
 	 ,@(body method)))))
+
+(defun make-after-method-form (method args next-methods &key types check-types)
+  "Return a form containing the bodies of the :AFTER methods inline.
+
+   METHOD is the first :AFTER method to execute.
+
+   ARGS is the list of arguments or the name of the argument list
+   variable.
+
+   NEXT-METHODS is the list of the following :BEFORE methods to be
+   executed.
+
+   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
+   should be inserted.
+
+   TYPES is the list of the types of the arguments as determined from
+   the lexical environment."
+
+  (let ((list-args (if (listp args) (cons 'list args) args)))
+    (destructuring-bind (&optional next-method &rest more-methods) next-methods
+      (with-gensyms (next-args)
+	`(flet ((call-next-method (&rest ,next-args)
+		  (declare (ignore ,next-args))
+		  (error 'illegal-call-next-method-error :method-type :before))
+
+		(next-method-p ()
+		  ,(when next-method t)))
+
+	   (declare (ignorable #'call-next-method #'next-method-p))
+
+	   ,(make-inline-method-body method list-args types check-types)
+	   ,@(when next-method
+	       (list
+		(make-after-method-form next-method args more-methods
+					:types types
+					:check-types check-types))))))))
 
 
 (defun block-name (gf-name)

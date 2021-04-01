@@ -55,7 +55,7 @@
    :specializer<
 
    :*current-gf*
-   :inline-method-body
+   :inline-methods
    :block-name))
 
 (in-package :static-dispatch-test)
@@ -427,7 +427,7 @@
   (is (block-name 'equal?) 'equal?)
   (is (block-name '(setf field)) 'field)
 
-  ;; Test the output of the INLINE-METHOD-BODY function
+  ;; Test the output of the INLINE-METHODS function
 
   (let ((*check-types*)
 	(*current-gf* 'equal?)
@@ -453,7 +453,7 @@
 
     (subtest "One Next Method"
       (is-form
-       (inline-method-body method1 '((+ u v) 3) (list method2) nil '(integer integer))
+       (inline-methods (list method1 method2) '((+ u v) 3) nil '(integer integer))
        `(flet ((call-next-method (&rest $args1)
 		 (let (($next1 (or $args1 (list (+ u v) 3))))
 		   (flet ((call-next-method (&rest $args2)
@@ -481,7 +481,7 @@
 
     (subtest "No Next Methods"
       (is-form
-       (inline-method-body method2 '(y z) nil t)
+       (inline-methods (list method2) '(y z) t)
        `(flet ((call-next-method (&rest $args)
 		 (let (($next (or $args (list y z))))
 		   (apply #'no-next-method 'equal? nil $next)))
@@ -499,7 +499,7 @@
 
     (subtest "With Type Checks"
       (is-form
-       (inline-method-body method1 '((+ u v) 3) (list method2) t '(number number))
+       (inline-methods (list method1 method2) '((+ u v) 3) t '(number number))
 
        `(flet ((call-next-method (&rest $args1)
 		 (let (($next1 (or $args1 (list (+ u v) 3))))
@@ -531,21 +531,22 @@
 
     (subtest "With :BEFORE Method"
       (is-form
-       (inline-method-body method3 '((f x) (* z 4)) (list method1 method2) nil '(fixnum integer))
+       (inline-methods (list method3 method1 method2) '((f x) (* z 4)) nil '(fixnum integer))
 
-       `(flet ((call-next-method (&rest $args1)
-		 (declare (ignore $args1))
-		 (error 'illegal-call-next-method-error :method-type :before))
+       `(progn
+	  (flet ((call-next-method (&rest $args1)
+		  (declare (ignore $args1))
+		  (error 'illegal-call-next-method-error :method-type :before))
 
-	       (next-method-p () t))
-	  (declare (ignorable #'call-next-method #'next-method-p))
+		(next-method-p () nil))
+	   (declare (ignorable #'call-next-method #'next-method-p))
 
-	  (block equal?
-	    (destructuring-bind (n1 n2 &optional z) (list (f x) (* z 4))
-	      (declare (ignorable n1 n2))
-	      (declare (type fixnum n1) (type integer n2))
-	      (pprint n1)
-	      (pprint n2)))
+	   (block equal?
+	     (destructuring-bind (n1 n2 &optional z) (list (f x) (* z 4))
+	       (declare (ignorable n1 n2))
+	       (declare (type fixnum n1) (type integer n2))
+	       (pprint n1)
+	       (pprint n2))))
 
 	  (flet ((call-next-method (&rest $args2)
 		   (let (($next2 (or $args2 (list (f x) (* z 4)))))
@@ -577,7 +578,7 @@
 
     (let ((*current-gf* '(setf field)))
       (is-form
-       (inline-method-body method2 '(a b) nil nil '(t t))
+       (inline-methods (list method2) '(a b) nil '(t t))
        `(flet ((call-next-method (&rest $args)
 		 (let (($next (or $args (list a b))))
 		   (apply #'no-next-method '(setf field) nil $next)))
