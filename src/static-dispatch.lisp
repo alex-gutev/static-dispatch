@@ -310,7 +310,7 @@
     "The type of method from which CALL-NEXT-METHOD was called."))
 
   (:documentation
-   "Condition representing an illegal call to CALL-NEXT-METHOD from within a :BEFORE, :AFTER or :AROUND method"))
+   "Condition representing an illegal call to CALL-NEXT-METHOD from within a :BEFORE and :AFTER method"))
 
 (cl:defmethod print-object ((e illegal-call-next-method-error) stream)
   (format stream "CALL-NEXT-METHOD called inside ~a method" (method-type e)))
