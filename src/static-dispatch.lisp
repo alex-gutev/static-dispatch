@@ -599,6 +599,7 @@
       (with-gensyms (next-arg-var next-args)
 	`(flet ((call-next-method (&rest ,next-arg-var)
 		  (let ((,next-args (or ,next-arg-var ,args)))
+		    (declare (ignorable ,next-args))
 		    ,(cond
 		       (next-method
 			(make-primary-method-form

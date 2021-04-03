@@ -456,8 +456,10 @@
        (inline-methods (list method1 method2) '((+ u v) 3) nil '(integer integer))
        `(flet ((call-next-method (&rest $args1)
 		 (let (($next1 (or $args1 (list (+ u v) 3))))
+		   (declare (ignorable $next1))
 		   (flet ((call-next-method (&rest $args2)
 			    (let (($next2 (or $args2 $next1)))
+			      (declare (ignorable $next2))
 			      (apply #'no-next-method 'equal? nil $next2)))
 
 			  (next-method-p () nil))
@@ -484,6 +486,7 @@
        (inline-methods (list method2) '(y z) t)
        `(flet ((call-next-method (&rest $args)
 		 (let (($next (or $args (list y z))))
+		   (declare (ignorable $next))
 		   (apply #'no-next-method 'equal? nil $next)))
 
 	       (next-method-p () nil))
@@ -503,8 +506,10 @@
 
        `(flet ((call-next-method (&rest $args1)
 		 (let (($next1 (or $args1 (list (+ u v) 3))))
+		   (declare (ignorable $next1))
 		   (flet ((call-next-method (&rest $args2)
 			    (let (($next2 (or $args2 $next1)))
+			      (declare (ignorable $next2))
 			      (apply #'no-next-method 'equal? nil $next2)))
 
 			  (next-method-p () nil))
@@ -550,8 +555,10 @@
 
 	  (flet ((call-next-method (&rest $args2)
 		   (let (($next2 (or $args2 (list (f x) (* z 4)))))
+		     (declare (ignorable $next2))
 		     (flet ((call-next-method (&rest $args3)
 			      (let (($next3 (or $args3 $next2)))
+				(declare (ignorable $next3))
 				(apply #'no-next-method 'equal? nil $next3)))
 
 			    (next-method-p () nil))
@@ -576,21 +583,23 @@
 
     ;; ;; Test SETF methods
 
-    (let ((*current-gf* '(setf field)))
-      (is-form
-       (inline-methods (list method2) '(a b) nil '(t t))
-       `(flet ((call-next-method (&rest $args)
-		 (let (($next (or $args (list a b))))
-		   (apply #'no-next-method '(setf field) nil $next)))
+    (subtest "SETF Method"
+      (let ((*current-gf* '(setf field)))
+	(is-form
+	 (inline-methods (list method2) '(a b) nil '(t t))
+	 `(flet ((call-next-method (&rest $args)
+		   (let (($next (or $args (list a b))))
+		     (declare (ignorable $next))
+		     (apply #'no-next-method '(setf field) nil $next)))
 
-	       (next-method-p () nil))
+		 (next-method-p () nil))
 
-	  (declare (ignorable #'call-next-method #'next-method-p))
+	    (declare (ignorable #'call-next-method #'next-method-p))
 
-	  (block field
-	    (destructuring-bind (x y &optional c) (list a b)
-	      (declare (ignorable x y))
-	      (declare (type t x) (type t y))
-	      (eq x y))))))))
+	    (block field
+	      (destructuring-bind (x y &optional c) (list a b)
+		(declare (ignorable x y))
+		(declare (type t x) (type t y))
+		(eq x y)))))))))
 
 (finalize)
