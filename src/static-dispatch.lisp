@@ -488,14 +488,15 @@
    environment."
 
   (labels
-      ((make-before (methods &optional (types types))
+      ((make-before (methods &optional (types types) (args args))
 	 (when methods
-	   (make-aux-method-form
+	   (make-aux-methods
+	    :before
 	    (first methods) args (rest methods)
 	    :check-types check-types
 	    :types types)))
 
-       (make-primary (before methods &optional (types types))
+       (make-primary (before methods &optional (types types) (args args))
 	 (let ((form
 		(make-primary-method-form
 		 (first methods) args (rest methods)
@@ -506,20 +507,21 @@
 	       `(progn ,before ,form)
 	       form)))
 
-       (make-after (primary methods &optional (types types))
+       (make-after (primary methods &optional (types types) (args args))
 	 (if methods
 	     `(prog1 ,primary
-		,(make-aux-method-form
+		,(make-aux-methods
+		  :after
 		  (first methods) args (rest methods)
 		  :check-types check-types
 		  :types types))
 
 	     primary))
 
-       (make-all (types before primary after)
-	 (-> (make-before before types)
-	     (make-primary primary types)
-	     (make-after after types)))
+       (make-all (types before primary after &optional (args args))
+	 (-> (make-before before types args)
+	     (make-primary primary types args)
+	     (make-after after types args)))
 
        (make-around (around before primary after)
 	 (if around
@@ -527,7 +529,7 @@
 	      (first around) args (rest around)
 	      :check-types check-types
 	      :types types
-	      :next-form (make-all nil before primary after))
+	      :last-form (curry #'make-all nil before primary after))
 
 	     (make-all types before primary after))))
 
@@ -538,7 +540,7 @@
 
       (make-around around before primary after))))
 
-(defun make-aux-method-form (method args next-methods &key check-types types)
+(defun make-aux-methods (type method args next-methods &key check-types types)
   "Return a form containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
 
    METHOD is the first method to execute.
@@ -554,26 +556,44 @@
    TYPES is the list of the types of the arguments as determined from
    the lexical environment."
 
-  (let ((list-args (if (listp args) (cons 'list args) args)))
+  (with-gensyms (next-args)
+    `(flet ((call-next-method (&rest ,next-args)
+	      (declare (ignore ,next-args))
+	      (error 'illegal-call-next-method-error :method-type ,type))
+
+	    (next-method-p () nil))
+       (declare (ignorable #'call-next-method #'next-method-p))
+
+       ,@(make-aux-method-body method args next-methods
+			       :check-types check-types
+			       :types types))))
+
+(defun make-aux-method-body (method args next-methods &key check-types types)
+  "Return a list of forms containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
+
+   METHOD is the first method to execute.
+
+   ARGS is the list of arguments or the name of the argument list
+   variable.
+
+   NEXT-METHODS is the list of the following methods to be executed.
+
+   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
+   should be inserted.
+
+   TYPES is the list of the types of the arguments as determined from
+   the lexical environment."
+
+  (let ((args (if (listp args) (cons 'list args) args)))
     (destructuring-bind (&optional next-method &rest more-methods) next-methods
-      (with-gensyms (next-args)
-	`(flet ((call-next-method (&rest ,next-args)
-		  (declare (ignore ,next-args))
-		  (error 'illegal-call-next-method-error :method-type :before))
+      (list*
+       (make-inline-method-body method args types check-types)
+       (when next-method
+	 (make-aux-method-body next-method args more-methods
+			       :check-types check-types
+			       :types types))))))
 
-		(next-method-p ()
-		  ,(when next-method t)))
-
-	   (declare (ignorable #'call-next-method #'next-method-p))
-
-	   ,(make-inline-method-body method list-args types check-types)
-	   ,@(when next-method
-	       (list
-		(make-aux-method-form next-method args more-methods
-				      :check-types check-types
-				      :types types))))))))
-
-(defun make-primary-method-form (method args next-methods &key check-types types next-form)
+(defun make-primary-method-form (method args next-methods &key check-types types last-form)
   "Return a form containing the bodies of the primary method inline.
 
    METHOD is the primary method to be executed.
@@ -590,9 +610,12 @@
    TYPES is the list of the types of the arguments as determined from
    the lexical environment.
 
-   If NEXT-FORM is provided it is a form that is evaluated in the
-   CALL-NEXT-METHOD definition of the last method, rather than
-   NO-NEXT-METHOD form."
+   LAST-FORM is a function which is called to generate the body of the
+   CALL-NEXT-METHOD function of the last applicable method. The
+   function is called with one argument, the variable to which the
+   argument list is bound. If LAST-FORM is NIL a call to
+   NO-NEXT-METHOD is generated in the body of the last
+   CALL-NEXT-METHOD function."
 
   (let ((args (if (listp args) (cons 'list args) args)))
     (destructuring-bind (&optional next-method &rest more-methods) next-methods
@@ -605,15 +628,15 @@
 			(make-primary-method-form
 			 next-method next-args more-methods
 			 :check-types check-types
-			 :next-form next-form))
+			 :last-form last-form))
 
-		       (next-form next-form)
+		       (last-form (funcall last-form next-args))
 
 		       (t
 			`(apply #'no-next-method ',*current-gf* nil ,next-args)))))
 
 		(next-method-p ()
-		  ,(and (or next-method next-form) t)))
+		  ,(and (or next-method last-form) t)))
 	   (declare (ignorable #'call-next-method #'next-method-p))
 
 	   ,(make-inline-method-body method args types check-types))))))
