@@ -305,7 +305,7 @@
 (define-condition illegal-call-next-method-error ()
   ((method-type
     :reader method-type
-    :initarg method-type
+    :initarg :method-type
     :documentation
     "The type of method from which CALL-NEXT-METHOD was called."))
 
