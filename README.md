@@ -76,8 +76,13 @@ is `EQL` to the specializer's value.
 a `TYPE (EQL ...)` declaration.
 
 `CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported
-fully. User-defined method combinations and `:BEFORE`, `:AFTER`
-`:AROUND` methods are not supported.
+fully.
+
+The standard method combination is supported, along with `:BEFORE`,
+`:AFTER` and `:AROUND` methods, however user-defined method
+combinations are not supported. You can still use a generic function
+with a user-defined method combination in your code however it will
+not be statically dispatched.
 
 **Note:** In order for type and inline declarations to be made
 available, to the compiler macro, consistently across implementations
@@ -106,12 +111,12 @@ Inlined-Generic-Function uses a custom generic function metaclass
 `INLINED-GENERIC-FUNCTION` which stores the method's body in order for
 it to be inlined by the compiler-macro. Whilst this approach is more
 robust than shadowing `DEFMETHOD` in order to store the method body in
-a hash-table in a global variable, as it will be able to inline
-methods added by other means besides `DEFMETHOD`, the metaclass is
-changed from the standard generic function metaclass which in turn
-prevents certain optimizations, of the dynamic generic function
-dispatch, from being performed by the compiler. This results in slower
-execution speed, as shown in
+a global variable, as it will be able to inline methods added by other
+means besides `DEFMETHOD`, the metaclass is changed from the standard
+generic function metaclass which in turn prevents certain
+optimizations, of the dynamic generic function dispatch, from being
+performed by the compiler. This results in slower execution speed, as
+shown in
 [https://github.com/guicho271828/inlined-generic-function#user-content-result].
 
 Static-Dispatch does not use a custom generic function metaclass thus
@@ -143,9 +148,8 @@ Static-Dispatch can handle full lambda-lists with all lambda-list
 keywords. Inlined-Generic-Function cannot, as of yet (November 2018),
 handle lambda-lists containing anything but required arguments.
 
-Static-Dispatch does not yet support before after, around methods and
-user-defined method combinations. All are supported by
-Inlined-Generic-Function.
+Static-Dispatch does not yet support user-defined method combinations,
+whereas Inlined-Generic-Function does.
 
 ## Dependencies
 
@@ -168,15 +172,14 @@ from the `STATIC-DISPATCH-CL` package) is called.
 [anaphora](https://github.com/tokenrove/anaphora),
 [trivia](https://github.com/guicho271828/trivia),
 [iterate](https://gitlab.common-lisp.net/iterate/iterate),
-[cl-arrows](https://github.com/nightfly19/cl-arrows).
+[arrows](https://gitlab.com/Harleqin/arrows).
 
 
 ## Status
 
 Supports class and EQL specializers.
 
-Does not support user-defined method combinations, and before, after,
-around methods.
+Does not support user-defined method combinations.
 
 Tested on: CCL, SBCL, CLISP, ECL, CMUCL and ABCL.
 
