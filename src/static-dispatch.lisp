@@ -315,6 +315,26 @@
 (cl:defmethod print-object ((e illegal-call-next-method-error) stream)
   (format stream "CALL-NEXT-METHOD called inside ~a method" (method-type e)))
 
+(define-condition no-primary-method-error ()
+  ((gf-name
+    :reader gf-name
+    :initarg :gf-name
+    :documentation
+    "Generic function name.")
+
+   (args
+    :reader args
+    :initarg :args
+    :documentation
+    "Method arguments."))
+
+  (:documentation
+   "No primary method for a generic function with given arguments."))
+
+(cl:defmethod print-object ((e no-primary-method-error) stream)
+  (format stream "No primary method for generic function ~a with arguments ~a"
+	  (gf-name e) (args e)))
+
 
 (defun static-overload (gf-name args env)
   "Determines the types of the generic function (with name GF-NAME)
@@ -498,14 +518,24 @@
 
        (make-primary (before methods &optional (types types) (args args))
 	 (let ((form
-		(make-primary-method-form
-		 (first methods) args (rest methods)
-		 :check-types check-types
-		 :types types)))
+		(primary-method-form methods types args)))
 
 	   (if before
 	       `(progn ,before ,form)
 	       form)))
+
+       (primary-method-form (methods types args)
+	 (match methods
+	   ((list* first rest)
+	    (make-primary-method-form
+	     first args rest
+	     :check-types check-types
+	     :types types))
+
+	   (_
+	    `(error 'no-primary-method-error
+		    :gf-name ,*current-gf*
+		    :args ,(if (listp args) (cons 'list args) args)))))
 
        (make-after (primary methods &optional (types types) (args args))
 	 (if methods
