@@ -148,7 +148,7 @@ similar to the following (simplified to remove the case of
      (check-type x integer)
 	 (list :number x)))
 
- (list :integer (call-next-method (1+ a))))
+ (list :integer (call-next-method (1+ x))))
 ```
 
 If the optimize declaration were changed to `(optimize (speed 3)
@@ -160,7 +160,7 @@ following:
   ((call-next-method (x)
 	 (list :number x)))
 
- (list :integer (call-next-method (1+ a))))
+ (list :integer (call-next-method (1+ x))))
 ```
 
 
