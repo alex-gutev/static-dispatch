@@ -354,3 +354,5 @@ dispatch should be performed.
 * Support for other method combinations.
 * Enhance generic functions to allow for specialization on all types
   rather than just classes.
+* Debugging options for emitting a warning when a generic function
+  could not be statically dispatched.
