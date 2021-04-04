@@ -339,3 +339,18 @@ dispatch should be performed.
    inline globally. See
    https://github.com/alex-gutev/cl-environments#issues for more
    information.
+
+### Planned Future Additions
+
+* Increased type inference of arguments allowing for more complex
+  expressions.
+* Removal of CALL-NEXT-METHOD and NEXT-METHOD-P if not used by the
+  method.
+* Optimization of CALL-NEXT-METHOD, where it is inlined in some cases.
+* Proper static dispatch, where the generic function call is replaced
+  with a call to the actual method function rather than with the body
+  of the method inline.
+* Method return type declarations.
+* Support for other method combinations.
+* Enhance generic functions to allow for specialization on all types
+  rather than just classes.
