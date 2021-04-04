@@ -90,6 +90,80 @@ the `ENABLE-HOOK` function has to be called at some point, see
 https://github.com/alex-gutev/cl-environments#documentation for more
 information.
 
+### Optimize Declarations
+
+The optimize `speed` and `safety` declarations affect the code that is
+inserted in place of the generic function call
+expression. Specifically, the definition of the lexical
+`CALL-NEXT-METHOD` functions.
+
+The types of the arguments which may be passed to `CALL-NEXT-METHOD`
+are unknown. An optimize declaration with a `SAFETY` level greater
+than or equal to the level for `SPEED` will result in type checks,
+using `CHECK-TYPE`, being inserted in the `CALL-NEXT-METHOD`
+definition to check that the arguments are of the expected type given
+in the method's specializer list. This will result in a condition
+being raised if arguments of an incorrect type are passed to
+`CALL-NEXT-METHOD`. However, if the `SPEED` optimize level is greater
+than the `SAFETY` level the type checks are not inserted. It is then
+the programmer's responsibility to ensure that the arguments passed to
+`CALL-NEXT-METHOD` are of the types specified in specializer list of
+the next most specific method. If `CALL-NEXT-METHOD` is called with no
+arguments, which means it is called with the same arguments passed to
+the current method, the arguments are guaranteed to be of the correct
+type.
+
+#### Examples
+
+Given a generic function with the following methods:
+
+```
+(defmethod foo ((a number))
+  (list :number a))
+
+(defmethod foo ((a integer))
+  (list :integer (call-next-method (1+ a))))
+```
+
+An optimize declaration such as the following will result in type
+checks being inserted:
+
+```
+(locally
+  (declare (inline foo)
+           (optimize (speed 2) (safety 2)))
+
+  (declare (type integer x))
+
+  (foo x))
+```
+
+This results in the expression `(foo x)` being replaced with something
+similar to the following (simplified to remove the case of
+`CALL-NEXT-METHOD` being called with no arguments:
+
+```
+(flet
+  ((call-next-method (x)
+     (check-type x integer)
+	 (list :number x)))
+
+ (list :integer (call-next-method (1+ a))))
+```
+
+If the optimize declaration were changed to `(optimize (speed 3)
+(safety 0))`, the type checks are omitted which results in the
+following:
+
+```
+(flet
+  ((call-next-method (x)
+	 (list :number x)))
+
+ (list :integer (call-next-method (1+ a))))
+```
+
+
 ### Interaction with other Compiler Macros
 
 By default Static-Dispatch does not add a compiler macro to a generic
