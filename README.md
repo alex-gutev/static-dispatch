@@ -164,6 +164,70 @@ following:
 ```
 
 
+### Common Pitfalls
+
+The semantics of generic functions are changed when statically
+dispatched, that is when they are declared `inline` in the environment
+in which they are called.
+
+Statically dispatched generic functions are dispatched based on the
+declared types of the arguments at compile-time. The declared type may
+differ from the actual runtime type of the argument, which may result
+in a different method being called when statically dispatched from
+when the generic function is dynamically dispatched. A useful analogy
+is that dynamically dispatched generic functions have the semantics of
+C++ virtual methods whereas statically dispatched functions have the
+semantics of overloaded functions/methods in C++ and Java.
+
+Consider the following methods:
+
+```lisp
+(defmethod foo ((a number))
+  (list :number a))
+
+(defmethod foo ((a integer))
+  (list :integer a))
+```
+
+And consider the following code:
+
+```lisp
+(let ((x 1))
+  (declare (type number x)
+           (inline foo))
+
+  (foo x))
+```
+
+When statically dispatched, as in the above example with the `(INLINE
+FOO)` declaration, the method specialized on `NUMBER` will be called
+and hence `(FOO X)` will evaluate to `(:NUMBER 1)`. However since `X`
+is actually bound to an integer value, with dynamic dispatch, when the
+`(INLINE FOO)` declaration is removed, the method specialized on
+`INTEGER` will be called and hence `(FOO X)` will evaluate to
+`(:INTEGER 1)`.
+
+It's also possible that a particular implementation may change the
+declared type of a variable to a subtype if it can be deduced to be of
+that subtype, so in this example the declaration `(type number x)`
+maybe changed to `(type integer x)` by the implementation. As a result
+it's not even possible to rely on the declaration forcing the method
+specialized on `NUMBER` to be called. Therefore you should only use
+statically dispatched functions for optimization where each method has
+the same behaviour just implemented for different types.
+
+**NOTE:*** If the type of an argument cannot be determined, or is
+declared `T`, the generic function will not be statically dispatched even
+if an `INLINE` declaration is in place.
+
+Another aspect in which the semantics of generic functions are changed
+is that when dynamically dispatched the list of methods can be changed
+at runtime, that is new methods can be added while the program is
+running and existing methods can be removed. Obviously,
+static-dispatch cannot predict what methods will be added or removed,
+therefore adding or removing methods will not have the desired effect
+on statically dispatched generic function calls.
+
 ### Interaction with other Compiler Macros
 
 By default Static-Dispatch does not add a compiler macro to a generic
