@@ -344,9 +344,9 @@ dispatch should be performed.
 
 * Increased type inference of arguments allowing for more complex
   expressions.
-* Removal of CALL-NEXT-METHOD and NEXT-METHOD-P if not used by the
+* Removal of `CALL-NEXT-METHOD` and `NEXT-METHOD-P` if not used by the
   method.
-* Optimization of CALL-NEXT-METHOD, where it is inlined in some cases.
+* Optimization of `CALL-NEXT-METHOD`, where it is inlined in some cases.
 * Proper static dispatch, where the generic function call is replaced
   with a call to the actual method function rather than with the body
   of the method inline.
