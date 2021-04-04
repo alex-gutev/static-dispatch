@@ -1,6 +1,6 @@
-;;;; static-dispatch.asd
+;;;; util.lisp
 ;;;;
-;;;; Copyright 2018 Alexander Gutev
+;;;; Copyright 2019-2021 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -23,44 +23,34 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-(asdf:defsystem #:static-dispatch
-  :description "Static generic function dispatch for Common Lisp."
-  :author "Alexander Gutev"
-  :license "MIT"
-  :version "0.3"
-  :serial t
-  :components ((:module
-		"src"
-		:components
-		((:file "package")
-		 (:file "static-dispatch"))))
+;;;; Utilities for testing static-dispatch
 
-  :depends-on (:alexandria
-	       :anaphora
-	       :arrows
-	       :iterate
-	       :trivia
-	       :closer-mop
+(defpackage :static-dispatch-test-util
+  (:use :static-dispatch-cl
+	:alexandria
+	:arrows
+	:trivia
 
-	       :agutil
-	       :cl-environments)
+	:prove)
 
-  :in-order-to ((asdf:test-op (asdf:test-op :static-dispatch/test))))
+  (:export :test-dispatch))
 
-(asdf:defsystem #:static-dispatch/test
-  :description "Tests for static-dispatch."
-  :author "Alexander Gutev"
-  :license "MIT"
-  :depends-on (:static-dispatch :cl-interpol :prove :prove-asdf)
-  :defsystem-depends-on (:prove-asdf)
-  :components ((:module
-		"test"
-		:components
-		((:file "util")
-		 (:test-file "internals")
-		 (:test-file "dispatch")
-		 (:test-file "next-methods")
-		 (:test-file "aux")
-		 (:test-file "compiler-macro"))))
-  :perform (asdf:test-op :after (op c)
-			 (funcall (intern #.(string :run) :prove) c :reporter :fiveam)))
+(in-package :static-dispatch-test-util)
+
+(defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
+  (with-gensyms (static?-var)
+    `(let ((,static?-var nil))
+       (declare (ignorable ,static?-var))
+       (macrolet ((static-dispatch::static-dispatch-test-hook ()
+		    `(setf ,',static?-var t)))
+
+	 ;; Suppress Output From Call
+	 (is
+	  (with-open-stream (*standard-output* (make-broadcast-stream)) ,call)
+	  ,result)
+
+	 ,(when test-dispatch
+	    `(is ,static?-var ,static-p
+		 ,(format nil "~a ~a dispatched"
+			  call
+			  (if static-p "statically" "dynamically"))))))))

@@ -1,6 +1,6 @@
-;;;; test.lisp
+;;;; dispatch.lisp
 ;;;;
-;;;; Copyright 2019-2020 Alexander Gutev
+;;;; Copyright 2019-2021 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -23,25 +23,18 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-;;;; These tests test that the result of invoking a statically
-;;;; dispatched generic function is correct. They do not test the
-;;;; internal details of how a function is statically dispatched.
-;;;;
-;;;; NOTE: On some implementations, the generic functions invoked in
-;;;; these tests might not be statically dispatched. In that case the
-;;;; tests which check whether they were statically dispatched will
-;;;; fail. In the event of the failure of these tests your program
-;;;; will still function correctly however you'll likely be unable to
-;;;; make use of statically dispatched generic functions and will
-;;;; simply revert to the default standard dynamic dispatch.
-
-;;;; These tests test the use of STATIC-DISPATCH from a high-level:
+;;;; These tests test the use of STATIC-DISPATCH rather than it's
+;;;; internals. Specifically:
 ;;;;
 ;;;;  1. That Generic functions are actually statically dispatched
 ;;;;     when declared INLINE.
 ;;;;
 ;;;;  2. That the result of the generic function call is correct
 ;;;;     regardless of whether they are statically dispatched or not.
+;;;;
+;;;; This test suite focuses on simple generic functions, with no
+;;;; auxilliary methods and no use of CALL-NEXT-METHOD or
+;;;; NEXT-METHOD-P.
 ;;;;
 ;;;; NOTE:
 ;;;;
@@ -51,19 +44,21 @@
 ;;;;  dispatch. Programs using STATIC-DISPATCH will still function
 ;;;;  correctly, provided the remaining tests don't fail, however they
 ;;;;  will not be able to make use of statically dispatched generic
-;;;;  functions on the implementation on which the test fails.
+;;;;  functions on the implementation on which the test fails. In this
+;;;;  case generic functions fallback to the standard dynamic
+;;;;  dispatch.
 
-(defpackage :static-dispatch-interface-test
+(defpackage :static-dispatch-test-dispatch
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
 	:trivia
 
-	:prove))
+	:prove
+	:static-dispatch-test-util))
 
-(in-package :static-dispatch-interface-test)
+(in-package :static-dispatch-test-dispatch)
 
-(named-readtables:in-readtable :interpol-syntax)
 
 ;;; Generic Function with Primary Methods
 
@@ -79,54 +74,6 @@
   (list a b))
 
 
-;;; Generic Function with Auxiliary Methods
-
-(defgeneric my-eq (a b))
-
-(defmethod my-eq ((a number) (b number))
-  (= a b))
-
-(defmethod my-eq (a b)
-  (eq a b))
-
-
-(defmethod my-eq :before ((a number) (b number))
-  (format t "Before Numbers: ~a = ~a~%" a b))
-
-(defmethod my-eq :before ((a integer) (b integer))
-  (format t "Before Integer: ~a = ~a~%" a b))
-
-(defmethod my-eq :after ((a number) (b number))
-  (format t "After Numbers: ~a = ~a~%" a b))
-
-(defmethod my-eq :after ((a integer) (b integer))
-  (format t "After Integer: ~a = ~a~%" a b))
-
-(defmethod my-eq :around ((a number) (b number))
-  (list :around-number (call-next-method)))
-
-(defmethod my-eq :around ((a integer) (b integer))
-  (if (= a b 133)
-      :special-number
-      (list :around-integer (call-next-method a b))))
-
-;;; The following generic function has a compiler macro which simply
-;;; returns the form as is. The purpose of this test is to ensure that
-;;; static-dispatch does not replace existing compiler macros.
-
-(defgeneric f (x))
-
-(define-compiler-macro f (&whole form &rest args)
-  (declare (ignore args))
-  form)
-
-(defmethod f ((x number))
-  x)
-
-(defmethod f ((x t))
-  nil)
-
-
 ;;; Macros
 
 (defmacro pass-through (form)
@@ -135,28 +82,10 @@
 
 (define-symbol-macro a-number 2)
 
+(defconstant +a-constant+ 10)
+
 
 ;;; Tests
-
-(defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
-  (with-gensyms (static?-var)
-    `(let ((,static?-var nil))
-       (declare (ignorable ,static?-var))
-       (macrolet ((static-dispatch::static-dispatch-test-hook ()
-		    `(setf ,',static?-var t)))
-
-	 ;; Suppress Output From Call
-	 (is
-	  (with-open-stream (*standard-output* (make-broadcast-stream)) ,call)
-	  ,result)
-
-	 ,(when test-dispatch
-	    `(is ,static?-var ,static-p
-		 ,(format nil "~a ~a dispatched"
-			  call
-			  (if static-p "statically" "dynamically"))))))))
-
-(defconstant +a-constant+ 10)
 
 (plan nil)
 
@@ -226,26 +155,27 @@
       (test-dispatch (add hello (neg 9)) '("hello" -9) :test-dispatch nil))))
 
 (subtest "THE forms"
-  (let ((x 5)
-	(hello "hello"))
-    (declare (inline add))
+  (flet ((f (x) x))
+    (let ((x 5)
+	  (hello "hello"))
+      (declare (inline add))
 
-    (test-dispatch (add (the number (second (add 1 2)))
-			(the number (f x)))
-		   '(number 8))
+      (test-dispatch (add (the number (second (add 1 2)))
+			  (the number (f x)))
+		     '(number 8))
 
-    (test-dispatch (add (the integer (second (add 1 2)))
-			1)
-		   '(number 4))
+      (test-dispatch (add (the integer (second (add 1 2)))
+			  1)
+		     '(number 4))
 
-    (test-dispatch (add 3
-			(the fixnum (second (add 5 6))))
-		   '(number 14))
+      (test-dispatch (add 3
+			  (the fixnum (second (add 5 6))))
+		     '(number 14))
 
 
-    (test-dispatch (add (the string (second (add hello "")))
-			"world")
-		   '(string "hello" "world"))))
+      (test-dispatch (add (the string (second (add hello "")))
+			  "world")
+		     '(string "hello" "world")))))
 
 (subtest "Macros"
   (macrolet
@@ -283,23 +213,5 @@
 			 '(1 "world")
 
 			 :test-dispatch nil))))))
-
-(subtest "Auxiliary Methods"
-  (locally (declare (inline my-eq))
-    (test-dispatch (my-eq 1/2 0.5) '(:around-number t))
-    (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)))
-    (test-dispatch (my-eq "x" 'x) nil)
-    (test-dispatch (my-eq 133 133) :special-number)
-
-    (is-print (my-eq 1/2 2/3) #?"Before Numbers: 1/2 = 2/3\nAfter Numbers: 1/2 = 2/3\n")
-    (is-print (my-eq 1 2) #?"Before Integer: 1 = 2\nBefore Numbers: 1 = 2\nAfter Numbers: 1 = 2\nAfter Integer: 1 = 2\n")))
-
-(subtest "Interaction with Other Compiler Macros"
-  (isnt (compiler-macro-function 'f) #'static-dispatch
-	"Compiler-Macro-Function of F not replaced by STATIC-DISPATCH")
-
-  (locally (declare (inline f))
-    (test-dispatch (f 1) 1 :static-p nil)
-    (test-dispatch (f 'x) nil :static-p nil)))
 
 (finalize)

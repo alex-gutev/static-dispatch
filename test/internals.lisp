@@ -1,4 +1,4 @@
-;;;; test.lisp
+;;;; internals.lisp
 ;;;;
 ;;;; Copyright 2018 Alexander Gutev
 ;;;;
@@ -25,7 +25,7 @@
 
 ;;;; Unit Tests
 
-(defpackage :static-dispatch-test
+(defpackage :static-dispatch-test-internals
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
@@ -58,7 +58,7 @@
    :inline-methods
    :block-name))
 
-(in-package :static-dispatch-test)
+(in-package :static-dispatch-test-internals)
 
 (plan nil)
 
