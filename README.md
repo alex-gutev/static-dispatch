@@ -117,7 +117,7 @@ type.
 
 Given a generic function with the following methods:
 
-```
+```lisp
 (defmethod foo ((a number))
   (list :number a))
 
@@ -128,7 +128,7 @@ Given a generic function with the following methods:
 An optimize declaration such as the following will result in type
 checks being inserted:
 
-```
+```lisp
 (locally
   (declare (inline foo)
            (optimize (speed 2) (safety 2)))
@@ -142,7 +142,7 @@ This results in the expression `(foo x)` being replaced with something
 similar to the following (simplified to remove the case of
 `CALL-NEXT-METHOD` being called with no arguments:
 
-```
+```lisp
 (flet
   ((call-next-method (x)
      (check-type x number)
@@ -155,7 +155,7 @@ If the optimize declaration were changed to `(optimize (speed 3)
 (safety 0))`, the type checks are omitted which results in the
 following:
 
-```
+```lisp
 (flet
   ((call-next-method (x)
      (list :number x)))
@@ -224,14 +224,14 @@ is actually bound to an integer value, with dynamic dispatch, when the
 
 It's also possible that a particular implementation may change the
 declared type of a variable to a subtype if it can be deduced to be of
-that subtype, so in this example the declaration `(type number x)`
-maybe changed to `(type integer x)` by the implementation. As a result
+that subtype, so in this example the declaration `(TYPE NUMBER X)`
+maybe changed to `(TYPE INTEGER X)` by the implementation. As a result
 it's not even possible to rely on the declaration forcing the method
 specialized on `NUMBER` to be called. Therefore you should only use
 statically dispatched functions for optimization where each method has
 the same behaviour just implemented for different types.
 
-**NOTE:*** If the type of an argument cannot be determined, or is
+**NOTE:** If the type of an argument cannot be determined, or is
 declared `T`, the generic function will not be statically dispatched even
 if an `INLINE` declaration is in place.
 
