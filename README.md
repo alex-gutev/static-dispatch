@@ -164,6 +164,21 @@ following:
 ```
 
 
+### Interaction with other Compiler Macros
+
+By default Static-Dispatch does not add a compiler macro to a generic
+function which already has a compiler macro function. To statically
+dispatch such functions the `STATIC-DISPATCH` function has to be
+called manually from the compiler macro.
+
+Function: `STATIC-DISPATCH FORM &OPTIONAL ENV`
+
+Determines whether to statically dispatch the call to the generic
+function `FORM`. If so returns the body of the selected method
+otherwise returns `FORM` as is.
+
+`ENV` is the lexical environment of the generic function call.
+
 ### Common Pitfalls
 
 The semantics of generic functions are changed when statically
@@ -228,20 +243,6 @@ static-dispatch cannot predict what methods will be added or removed,
 therefore adding or removing methods will not have the desired effect
 on statically dispatched generic function calls.
 
-### Interaction with other Compiler Macros
-
-By default Static-Dispatch does not add a compiler macro to a generic
-function which already has a compiler macro function. To statically
-dispatch such functions the `STATIC-DISPATCH` function has to be
-called manually from the compiler macro.
-
-Function: `STATIC-DISPATCH FORM &OPTIONAL ENV`
-
-Determines whether to statically dispatch the call to the generic
-function `FORM`. If so returns the body of the selected method
-otherwise returns `FORM` as is.
-
-`ENV` is the lexical environment of the generic function call.
 
 ## Differences from INLINED-GENERIC-FUNCTION
 
