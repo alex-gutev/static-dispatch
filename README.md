@@ -146,7 +146,7 @@ similar to the following (simplified to remove the case of
 (flet
   ((call-next-method (x)
      (check-type x integer)
-	 (list :number x)))
+     (list :number x)))
 
  (list :integer (call-next-method (1+ x))))
 ```
@@ -158,7 +158,7 @@ following:
 ```
 (flet
   ((call-next-method (x)
-	 (list :number x)))
+     (list :number x)))
 
  (list :integer (call-next-method (1+ x))))
 ```
