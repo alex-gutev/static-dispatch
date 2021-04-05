@@ -102,7 +102,7 @@
   (:method :after ((x integer))
      (format t "BAR After: ~x" x)))
 
-(defmethod bar :around (x)
+(defmethod bar :around ((x t))
   (list 'around-bar (call-next-method)))
 
 
