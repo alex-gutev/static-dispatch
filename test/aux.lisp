@@ -46,6 +46,12 @@
 ;;;;  functions on the implementation on which the test fails. In this
 ;;;;  case generic functions fallback to the standard dynamic
 ;;;;  dispatch.
+;;;;
+;;;;  Similarly failures of the form is expected to raise a condition
+;;;;  ILLEGAL-CALL-NEXT-METHOD-ERROR/NO-PRIMARY-METHOD-ERROR indicate
+;;;;  that the generic functions were not statically dispatched and
+;;;;  hence these conditions are not raised but the builtin CLOS
+;;;;  conditions are raised.
 
 (defpackage :static-dispatch-test-aux
   (:use :static-dispatch-cl
