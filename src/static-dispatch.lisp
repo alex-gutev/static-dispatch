@@ -302,7 +302,7 @@
   "The name of the generic function currently being inlined/statically
    dispatched.")
 
-(define-condition illegal-call-next-method-error ()
+(define-condition illegal-call-next-method-error (error)
   ((method-type
     :reader method-type
     :initarg :method-type
@@ -315,7 +315,7 @@
 (cl:defmethod print-object ((e illegal-call-next-method-error) stream)
   (format stream "CALL-NEXT-METHOD called inside ~a method" (method-type e)))
 
-(define-condition no-primary-method-error ()
+(define-condition no-primary-method-error (error)
   ((gf-name
     :reader gf-name
     :initarg :gf-name
@@ -534,7 +534,7 @@
 
 	   (_
 	    `(error 'no-primary-method-error
-		    :gf-name ,*current-gf*
+		    :gf-name ',*current-gf*
 		    :args ,(if (listp args) (cons 'list args) args)))))
 
        (make-after (primary methods &optional (types types) (args args))

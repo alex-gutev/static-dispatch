@@ -45,7 +45,8 @@
 	   :defgeneric
 	   :static-dispatch
 
-	   :illegal-call-next-method-error))
+	   :illegal-call-next-method-error
+	   :no-primary-method-error))
 
 (agutil:define-merged-package :static-dispatch-cl
     :closer-environments
