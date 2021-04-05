@@ -586,17 +586,18 @@
    TYPES is the list of the types of the arguments as determined from
    the lexical environment."
 
-  (with-gensyms (next-args)
-    `(flet ((call-next-method (&rest ,next-args)
-	      (declare (ignore ,next-args))
-	      (error 'illegal-call-next-method-error :method-type ,type))
+  (let ((args (if (listp args) (cons 'list args) args)))
+    (with-gensyms (next-args)
+      `(flet ((call-next-method (&rest ,next-args)
+		(declare (ignore ,next-args))
+		(error 'illegal-call-next-method-error :method-type ,type))
 
-	    (next-method-p () nil))
-       (declare (ignorable #'call-next-method #'next-method-p))
+	      (next-method-p () nil))
+	 (declare (ignorable #'call-next-method #'next-method-p))
 
-       ,@(make-aux-method-body method args next-methods
-			       :check-types check-types
-			       :types types))))
+	 ,@(make-aux-method-body method args next-methods
+				 :check-types check-types
+				 :types types)))))
 
 (defun make-aux-method-body (method args next-methods &key check-types types)
   "Return a list of forms containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
@@ -614,14 +615,13 @@
    TYPES is the list of the types of the arguments as determined from
    the lexical environment."
 
-  (let ((args (if (listp args) (cons 'list args) args)))
-    (destructuring-bind (&optional next-method &rest more-methods) next-methods
-      (list*
-       (make-inline-method-body method args types check-types)
-       (when next-method
-	 (make-aux-method-body next-method args more-methods
-			       :check-types check-types
-			       :types types))))))
+  (destructuring-bind (&optional next-method &rest more-methods) next-methods
+    (list*
+     (make-inline-method-body method args types check-types)
+     (when next-method
+       (make-aux-method-body next-method args more-methods
+			     :check-types check-types
+			     :types types)))))
 
 (defun make-primary-method-form (method args next-methods &key check-types types last-form)
   "Return a form containing the bodies of the primary method inline.
