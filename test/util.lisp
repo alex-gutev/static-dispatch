@@ -33,7 +33,9 @@
 
 	:prove)
 
-  (:export :test-dispatch))
+  (:export :test-dispatch
+	   :suppress-output
+	   :test-error))
 
 (in-package :static-dispatch-test-util)
 
@@ -54,3 +56,10 @@
 		 ,(format nil "~a ~a dispatched"
 			  call
 			  (if static-p "statically" "dynamically"))))))))
+
+(defmacro suppress-output (&body forms)
+  `(with-open-stream (*standard-output* (make-broadcast-stream))
+     ,@forms))
+
+(defmacro test-error (form error)
+  `(is-error (suppress-output ,form) ,error))

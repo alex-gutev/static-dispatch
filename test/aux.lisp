@@ -91,6 +91,41 @@
       :special-number
       (list :around-integer (call-next-method a b))))
 
+
+;;; Generic Functions with no primary methods
+
+(defgeneric foo (x)
+  (:method :before (x)
+    (format t "FOO Before: ~x" x)))
+
+(defgeneric bar (x)
+  (:method :after ((x integer))
+     (format t "BAR After: ~x" x)))
+
+(defmethod bar :around (x)
+  (list 'around-bar (call-next-method)))
+
+
+;;; Generic Function with before and after methods that call
+;;; CALL-NEXT-METHOD:
+
+(defgeneric baz (x)
+  (:method (x) x))
+
+(defmethod baz :before (x)
+  (format t "BAZ Before all: ~a ~a~%" x (next-method-p)))
+
+(defmethod baz :before ((x integer))
+  (format t "BAZ Before INTEGER: ~a ~a~%" x (next-method-p))
+  (call-next-method))
+
+(defmethod baz :after ((x array))
+  (format t "BAZ After ARRAY: ~a ~a~%" x (next-method-p)))
+
+(defmethod baz :after ((x string))
+  (format t "BAZ After STRING: ~a ~a~%" x (next-method-p))
+  (call-next-method x))
+
 ;;; Macros
 
 (defmacro pass-through (form)
@@ -121,6 +156,57 @@
 
       ;; Test that :BEFORE and :AFTER methods are not called when not
       ;; applicable.
-      (is-print (my-eq 'x 'y) ""))))
+      (is-print (my-eq 'x 'y) "")))
+
+  (subtest "No Primary Method"
+    (subtest "BEFORE Method"
+      (locally (declare (inline foo))
+	(is-print
+	 (handler-case (foo "x")
+	   (no-primary-method-error () nil))
+	 #?"FOO Before: x")
+
+	(test-error (foo 1) no-primary-method-error)))
+
+    (subtest "AFTER Method"
+      (locally (declare (inline bar))
+	(is-print
+	 (handler-case (bar 1)
+	   (no-primary-method-error () nil))
+	 "")
+
+	(test-error (bar 5) no-primary-method-error)))
+
+    (subtest "AROUND Method"
+      (locally (declare (inline bar))
+	(test-error (bar "hello") no-primary-method-error)
+	(test-error (bar 10) no-primary-method-error))))
+
+  (subtest "CALL-NEXT-METHOD and NEXT-METHOD-P from BEFORE and AFTER methods"
+    (subtest "BEFORE Method"
+      (locally (declare (inline baz))
+	(is-print (baz 'x) #?"BAZ Before all: X NIL\n")
+
+	(is-print
+	 (handler-case
+	     (baz 1)
+	   (illegal-call-next-method-error () nil))
+	 #?"BAZ Before INTEGER: 1 NIL\n")
+
+	(test-error (baz 14) illegal-call-next-method-error)))
+
+    (subtest "AFTER Method"
+      (locally (declare (inline baz))
+	(is-print (baz #(1 2 3))
+		  #?"BAZ Before all: #(1 2 3) NIL\nBAZ After ARRAY: #(1 2 3) NIL\n")
+
+	(is-print
+	 (handler-case
+	     (baz "abcd")
+	   (illegal-call-next-method-error () nil))
+
+	 #?"BAZ Before all: abcd NIL\nBAZ After ARRAY: abcd NIL\nBAZ After STRING: abcd NIL\n")
+
+	(test-error (baz "xyz") illegal-call-next-method-error)))))
 
 (finalize)
