@@ -151,7 +151,7 @@ similar to the following (simplified to remove the case of
  (list :integer (call-next-method (1+ x))))
 ```
 
-If the optimize declaration was changed to `(optimize (speed 3)
+If the optimize declaration is changed to `(optimize (speed 3)
 (safety 0))`, the type checks are omitted which results in the
 following:
 
