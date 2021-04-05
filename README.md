@@ -140,7 +140,7 @@ checks being inserted:
 
 This results in the expression `(foo x)` being replaced with something
 similar to the following (simplified to remove the case of
-`CALL-NEXT-METHOD` being called with no arguments:
+`CALL-NEXT-METHOD` being called with no arguments):
 
 ```lisp
 (flet
@@ -151,7 +151,7 @@ similar to the following (simplified to remove the case of
  (list :integer (call-next-method (1+ x))))
 ```
 
-If the optimize declaration were changed to `(optimize (speed 3)
+If the optimize declaration was changed to `(optimize (speed 3)
 (safety 0))`, the type checks are omitted which results in the
 following:
 
