@@ -83,16 +83,19 @@
 	(list a b)))
 
 
-(defgeneric bar (x y)
-  (:method ((x number) (y number))
-    (list 'number (call-next-method (1+ x) (1+ y))))
+;; Test functions for tests which check that NO-NEXT-METHOD tests is
+;; called
 
-  (:method ((x string) (y string))
-    (list 'string (call-next-method))))
+;; (defgeneric bar (x y)
+;;   (:method ((x number) (y number))
+;;     (list 'number (call-next-method (1+ x) (1+ y))))
 
-(defmethod no-next-method ((gf (eql 'bar)) method &rest args)
-  (declare (ignore method))
-  (list 'no-next-method gf args))
+;;   (:method ((x string) (y string))
+;;     (list 'string (call-next-method))))
+
+;; (defmethod no-next-method ((gf (eql (fdefinition 'bar))) method &rest args)
+;;   (declare (ignore method))
+;;   (list 'no-next-method 'bar args))
 
 ;;; Macros
 
@@ -182,14 +185,27 @@
       (test-dispatch (foo (pass-through "hello") +a-constant+)
 		     (list 'other nil (list "hello" +a-constant+)))))
 
-  (subtest "No Next Method"
-    (locally (declare (inline bar) (optimize speed))
-      (test-dispatch
-       (bar 1 2)
-       '(number (no-next-method bar (2 3))))
+  ;; These tests have been disabled because NO-NEXT-METHOD does not
+  ;; seem to be supported on all implementations, ABCL and ECL do not
+  ;; call NO-NEXT-METHOD but simply emit an error.
+  ;;
+  ;; Furthermore on the implementations which do support it, CCL and
+  ;; SBCL, it is not called with the arguments which are actually
+  ;; passed to CALL-NEXT-METHOD, despite that being clearly stated in
+  ;; the standard, but the arguments originally passed to the method.
+  ;;
+  ;; Due to the inconsistent behaviour across implementations, these
+  ;; tests have been disabled
 
-      (test-dispatch
-       (bar "abc" "def")
-       '(string (no-next-method bar ("abc" "def")))))))
+  ;; (subtest "No Next Method"
+  ;;   (locally (declare (inline bar) (optimize speed))
+  ;;     (test-dispatch
+  ;;      (bar 1 2)
+  ;;      '(number (no-next-method bar (2 3))))
+
+  ;;     (test-dispatch
+  ;;      (bar "abc" "def")
+  ;;      '(string (no-next-method bar ("abc" "def"))))))
+  )
 
 (finalize)
