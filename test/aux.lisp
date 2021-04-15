@@ -66,6 +66,9 @@
 
 (named-readtables:in-readtable :interpol-syntax)
 
+;;; Inhibit notes on SBCL
+#+sbcl (declaim (optimize sb-ext:inhibit-warnings))
+
 ;;; Generic Function with Auxiliary Methods
 
 (defgeneric my-eq (a b))
@@ -149,14 +152,18 @@
 
 (subtest "Auxiliary Methods"
   (subtest "AROUND Methods"
-    (locally (declare (inline my-eq))
+    (locally (declare (inline my-eq)
+		      (optimize speed))
+
       (test-dispatch (my-eq 1/2 0.5) '(:around-number t))
       (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)))
       (test-dispatch (my-eq "x" 'x) nil)
       (test-dispatch (my-eq 133 133) :special-number)))
 
   (subtest "BEFORE and AFTER Methods"
-    (locally (declare (inline my-eq))
+    (locally (declare (inline my-eq)
+		      (optimize speed))
+
       (is-print (my-eq 1/2 2/3) #?"Before Numbers: 1/2 = 2/3\nAfter Numbers: 1/2 = 2/3\n")
       (is-print (my-eq 1 2) #?"Before Integer: 1 = 2\nBefore Numbers: 1 = 2\nAfter Numbers: 1 = 2\nAfter Integer: 1 = 2\n")
 
@@ -166,7 +173,7 @@
 
   (subtest "No Primary Method"
     (subtest "BEFORE Method"
-      (locally (declare (inline foo))
+      (locally (declare (inline foo) (optimize speed))
 	(is-print
 	 (handler-case (foo "x")
 	   (no-primary-method-error () nil))
@@ -175,7 +182,7 @@
 	(test-error (foo 1) no-primary-method-error)))
 
     (subtest "AFTER Method"
-      (locally (declare (inline bar))
+      (locally (declare (inline bar) (optimize speed))
 	(is-print
 	 (handler-case (bar 1)
 	   (no-primary-method-error () nil))
@@ -184,13 +191,13 @@
 	(test-error (bar 5) no-primary-method-error)))
 
     (subtest "AROUND Method"
-      (locally (declare (inline bar))
+      (locally (declare (inline bar) (optimize speed))
 	(test-error (bar "hello") no-primary-method-error)
 	(test-error (bar 10) no-primary-method-error))))
 
   (subtest "CALL-NEXT-METHOD and NEXT-METHOD-P from BEFORE and AFTER methods"
     (subtest "BEFORE Method"
-      (locally (declare (inline baz))
+      (locally (declare (inline baz) (optimize speed))
 	(is-print (baz 'x) #?"BAZ Before all: X NIL\n")
 
 	(is-print
@@ -202,7 +209,7 @@
 	(test-error (baz 14) illegal-call-next-method-error)))
 
     (subtest "AFTER Method"
-      (locally (declare (inline baz))
+      (locally (declare (inline baz) (optimize speed))
 	(is-print (baz #(1 2 3))
 		  #?"BAZ Before all: #(1 2 3) NIL\nBAZ After ARRAY: #(1 2 3) NIL\n")
 
