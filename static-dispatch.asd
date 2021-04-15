@@ -33,7 +33,9 @@
 		"src"
 		:components
 		((:file "package")
-		 (:file "static-dispatch"))))
+		 (:file "common")
+		 (:file "default" :if-feature (:not :sbcl))
+		 (:file "sbcl" :if-feature :sbcl))))
 
   :depends-on (:alexandria
 	       :anaphora
