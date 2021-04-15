@@ -87,10 +87,15 @@
 
 ;;; Tests
 
+;;; Inhibit notes on SBCL
+#+sbcl (declaim (optimize sb-ext:inhibit-warnings))
+
 (plan nil)
 
 (subtest "Constant Arguments"
-  (locally (declare (inline add))
+  (locally (declare (optimize speed)
+		    (inline add))
+
     (test-dispatch (add 1 2) '(number 3))
     (test-dispatch (add "hello" "world") '(string "hello" "world"))
     (test-dispatch (add 'x 'y) '(x y) :test-dispatch nil)
@@ -104,7 +109,8 @@
     (declare (type number x-int y-int)
 	     (type string x-string y-string)
 	     (type (eql 3) z-int))
-    (declare (inline add))
+
+    (declare (optimize speed) (inline add))
 
     (test-dispatch (add x-int y-int) '(number 3))
     (test-dispatch (add 1 x-int) '(number 2))
@@ -134,7 +140,9 @@
     (declare (ftype (function (number) number) neg)
 	     (ftype (function (number) (values number number)) half)
 	     (ftype (function (string) string) reverse-string))
-    (declare (inline add reverse-string))
+
+    (declare (optimize speed)
+	     (inline add reverse-string))
 
     (let ((x 1) (y 2)
 	  (hello "hello") (world "world"))
@@ -158,7 +166,9 @@
   (flet ((f (x) x))
     (let ((x 5)
 	  (hello "hello"))
-      (declare (inline add))
+
+      (declare (optimize speed)
+	       (inline add))
 
       (test-dispatch (add (the number (second (add 1 2)))
 			  (the number (f x)))
@@ -190,7 +200,8 @@
 
       (let ((x 1) (y 2))
 	(declare (type number x y))
-	(declare (inline add))
+	(declare (optimize speed)
+		 (inline add))
 
 	(symbol-macrolet ((x-mac x)
 			  (number-mac (the number (second (add 1 2)))))
