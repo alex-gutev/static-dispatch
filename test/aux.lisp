@@ -148,6 +148,9 @@
 
 ;;; Tests
 
+;; Enable static dispatch
+(enable-static-dispatch my-eq foo bar baz)
+
 (plan nil)
 
 (subtest "Auxiliary Methods"

@@ -110,7 +110,10 @@
 
 ;;; Tests
 
-;;; Inhibit notes on SBCL
+;; Enable static dispatch
+(enable-static-dispatch foo)
+
+;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
 (plan nil)
