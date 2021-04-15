@@ -107,12 +107,16 @@
 
 ;;; Tests
 
+;;; Inhibit notes on SBCL
+#+sbcl (declaim (optimize sb-ext:inhibit-warnings))
+
 (plan nil)
 
 (subtest "Test CALL-NEXT-METHOD and NEXT-METHOD-P"
   (subtest "Integer Arguments"
     (let ((x-int 5) (y-int 10))
       (declare (type integer x-int y-int)
+	       (optimize speed)
 	       (inline foo))
 
       (test-dispatch
@@ -130,6 +134,7 @@
   (subtest "Float Arguments"
     (let ((x 0.5) (y 2.5))
       (declare (type float x y)
+	       (optimize speed)
 	       (inline foo))
 
       (test-dispatch
@@ -144,6 +149,7 @@
     (let ((x 1) (y 3/2))
       (declare (type integer x)
 	       (type number y)
+	       (optimize speed)
 	       (inline foo))
 
       (test-dispatch
@@ -157,6 +163,7 @@
   (subtest "String Arguments"
     (let ((hello "hello"))
       (declare (type string hello)
+	       (optimize speed)
 	       (inline foo))
 
       (test-dispatch
@@ -168,13 +175,15 @@
        '(string t ("hello" "bye")))))
 
   (subtest "Other Arguments"
-    (locally (declare (inline foo))
+    (locally (declare (inline foo)
+		      (optimize speed))
+
       (test-dispatch (foo 'x 0) '(other nil (x 0)))
       (test-dispatch (foo (pass-through "hello") +a-constant+)
 		     (list 'other nil (list "hello" +a-constant+)))))
 
   (subtest "No Next Method"
-    (locally (declare (inline bar))
+    (locally (declare (inline bar) (optimize speed))
       (test-dispatch
        (bar 1 2)
        '(number (no-next-method bar (2 3))))
