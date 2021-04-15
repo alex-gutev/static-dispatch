@@ -39,23 +39,28 @@
 
 (in-package :static-dispatch-test-util)
 
+;;; Test Hook macro
+
+;;; On SBCL where DEFTRANSFORM is used rather than a compiler-macro,
+;;; STATIC-DISPATCH-TEST-HOOK has to be a global macro rather than a
+;;; MACROLET, as MACROLETS in the transformed form are not expanded.
+
+(defvar *static-dispatch*)
+
+(defmacro static-dispatch::static-dispatch-test-hook ()
+  '(setf *static-dispatch* t))
+
 (defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
-  (with-gensyms (static?-var)
-    `(let ((,static?-var nil))
-       (declare (ignorable ,static?-var))
-       (macrolet ((static-dispatch::static-dispatch-test-hook ()
-		    `(setf ,',static?-var t)))
+  `(let ((*static-dispatch* nil))
+     (is
+      (with-open-stream (*standard-output* (make-broadcast-stream)) ,call)
+      ,result)
 
-	 ;; Suppress Output From Call
-	 (is
-	  (with-open-stream (*standard-output* (make-broadcast-stream)) ,call)
-	  ,result)
-
-	 ,(when test-dispatch
-	    `(is ,static?-var ,static-p
-		 ,(format nil "~a ~a dispatched"
-			  call
-			  (if static-p "statically" "dynamically"))))))))
+     ,(when test-dispatch
+	`(is *static-dispatch* ,static-p
+	     ,(format nil "~a ~a dispatched"
+		      call
+		      (if static-p "statically" "dynamically"))))))
 
 (defmacro suppress-output (&body forms)
   `(with-open-stream (*standard-output* (make-broadcast-stream))
