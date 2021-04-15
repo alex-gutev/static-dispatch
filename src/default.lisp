@@ -30,29 +30,18 @@
 
 ;;; Compiler Macro
 
-(defun set-method-compiler-macro (name qualifier specializers lambda-list body)
-  "Generate code which sets the compiler-macro for a generic function method defined using DEFMETHOD.
+(defmacro enable-static-dispatch (&rest names)
+  "Enable static dispatching for generic functions with names NAMES."
 
-   NAME         - Generic function name
-   QUALIFIER    - Generic function qualifier
-   SPECIALIZERS - Generic function specializers
-   LAMBDA-LIST  - Generic function lambda list
-   BODY         - Generic function body"
+  `(progn ,@(mapcar (curry #'list 'enable-static-dispatch%) names)))
 
-  (declare (ignore qualifier specializers lambda-list body))
+(defmacro enable-static-dispatch% (name)
+  "Enable static dispatching for the generic function with name NAME."
 
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (ignore-errors
-       (unless (compiler-macro-function ',name)
-	 (setf (compiler-macro-function ',name) #'static-dispatch)))))
-
-(defun set-defgeneric-compiler-macro (name methods)
-  "Generate code which sets the compiler-macro for a generic function defined using DEFGENERIC.
-
-   METHODS - List of methods defined using the DEFGENERIC form."
-
-  (declare (ignore methods))
-  (list (set-method-compiler-macro name nil nil nil nil)))
+     (if (compiler-macro-function ',name)
+	 (warn "Generic function: ~a already has a compiler-macro. Static dispatch not enabled." ',name)
+	 (setf (compiler-macro-function ',name) #'static-dispatch))))
 
 (defun static-dispatch (whole &optional env)
   "Compiler macro function for statically dispatched generic

@@ -43,6 +43,8 @@
 
   (:export :defmethod
 	   :defgeneric
+
+	   :enable-static-dispatch
 	   :static-dispatch
 
 	   :illegal-call-next-method-error

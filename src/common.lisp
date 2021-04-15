@@ -154,60 +154,47 @@
 
 	 (ensure-method-info name qualifier specializers :body body :lambda-list lambda-list)
 
-	 `(progn
-	    ,(set-method-compiler-macro name qualifier specializers lambda-list body)
-
-	    ,(alet `(c2mop:defmethod ,name ,@args)
-	       (if (has-eql-specializer? specializers)
-		   `(aprog1 ,it
-		      (ensure-method-info
-		       ',name
-		       ',qualifier
-		       (mapcar #'specializer->cl (method-specializers it))
-		       :body ',body
-		       :lambda-list ',lambda-list))
-		   it))))
+	 (alet `(c2mop:defmethod ,name ,@args)
+	   (if (has-eql-specializer? specializers)
+	       `(aprog1 ,it
+		  (ensure-method-info
+		   ',name
+		   ',qualifier
+		   (mapcar #'specializer->cl (method-specializers it))
+		   :body ',body
+		   :lambda-list ',lambda-list))
+	       it)))
      (match-error () (mark-no-dispatch name))
      (not-supported ()))
 
    `(c2mop:defmethod ,name ,@args)))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
-  `(progn
-     ,@(handler-case
-	   (progn
-	     (let ((methods (ensure-gf-methods name)))
-	       (iter
-		 (for (key method) in-hashtable methods)
-		 (when (remove-on-redefine-p method)
-		   (remhash key methods))))
+  (handler-case
+      (progn
+	(let ((methods (ensure-gf-methods name)))
+	  (iter
+	    (for (key method) in-hashtable methods)
+	    (when (remove-on-redefine-p method)
+	      (remhash key methods))))
 
-	     (let ((methods
-		    (mappend
-		     (lambda-match
-		       ((list* :method args)
-			(list (multiple-value-list (parse-method args)))))
-		     options)))
+	(mapc
+	 (lambda-match
+	   ((list* :method args)
+	    (multiple-value-bind (qualifier specializers lambda-list body)
+		(parse-method args)
 
-	       (mapc
-		(lambda (method)
-		  (destructuring-bind (qualifier specializers lambda-list body)
-		      method
+	      (ensure-method-info name
+				  qualifier
+				  specializers
+				  :body body
+				  :lambda-list lambda-list
+				  :remove-on-redefine-p t))))
+	 options))
+    (match-error () (mark-no-dispatch name))
+    (not-supported ()))
 
-		    (ensure-method-info name
-					qualifier
-					specializers
-					:body body
-					:lambda-list lambda-list
-					:remove-on-redefine-p t)))
-
-		methods)
-
-	       (set-defgeneric-compiler-macro name methods)))
-	 (match-error () (mark-no-dispatch name))
-	 (not-supported ()))
-
-     (c2mop:defgeneric ,name ,lambda-list ,@options)))
+  `(c2mop:defgeneric ,name ,lambda-list ,@options))
 
 
 ;;; Parsing Method Definitions
