@@ -228,7 +228,7 @@
     ;; Check that even if a new method with no qualifiers is defined,
     ;; the method table will not be recreated.
 
-    (macroexpand '(static-dispatch:defmethod (x y)
+    (macroexpand '(static-dispatch:defmethod equal? (x y)
 		   (pprint x)
 		   (pprint y)))
 
