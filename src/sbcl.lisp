@@ -104,21 +104,19 @@
    argument type is of type T, which implies the type is undetermined
    the transform is not performed. Otherwise it is performed."
 
-  (aprog1
-      (let ((t-type (sb-kernel:specifier-type t)))
-	(flet ((is-t? (specializer type)
-		 (and (eq specializer t)
-		      (sb-kernel:type= type t-type))))
+  (let ((t-type (sb-kernel:specifier-type t)))
+    (flet ((is-t? (specializer type)
+	     (and (eq specializer t)
+		  (sb-kernel:type= type t-type))))
 
-	  (with-accessors ((args sb-c::combination-args))
-	      node
+      (with-accessors ((args sb-c::combination-args))
+	  node
 
-	    (when (and (sb-c::combination-p node)
-		       (every #'sb-c::lvar-p args))
+	(when (and (sb-c::combination-p node)
+		   (every #'sb-c::lvar-p args))
 
-	      (->> (mapcar #'sb-c::lvar-type args)
-		   (notany #'is-t? specializers))))))
-    (format t "Should dispatch for ~a: ~a~%" specializers it)))
+	  (->> (mapcar #'sb-c::lvar-type args)
+	       (notany #'is-t? specializers)))))))
 
 
 ;;; Static Dispatching
