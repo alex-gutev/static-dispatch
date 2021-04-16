@@ -330,9 +330,14 @@
 	      method))))
     (mapcar #'order-specializers methods)))
 
-(defun applicable-methods (methods types)
+(defun applicable-methods (methods types &optional (remove-t t))
   "Returns a list of all methods in METHODS which are applicable to
-   the types TYPES."
+   the types TYPES.
+
+   If REMOVE-T is true, applicable methods with a T specializer which
+   match a T argument type are not considered unless all other methods
+   have a T specializer for that argument. If NIL they are considered
+   for applicability."
 
   (labels ((filter-methods (types methods)
 	     (when methods
@@ -343,7 +348,7 @@
 		   methods)))
 
 	   (filter-on-type (methods type)
-	     (if (eq type t)
+	     (if (and remove-t (eq type t))
 		 (let ((methods (remove 'eql methods :key (compose #'ensure-car #'caar)))) ; Remove all EQL methods
 		   (and (every (compose (curry #'eq t) #'caar) methods) methods))
 		 (remove type methods :test-not #'subtypep :key #'caar)))

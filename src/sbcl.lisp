@@ -36,69 +36,41 @@
   `(progn ,@(mapcar (curry #'list 'enable-static-dispatch%) names)))
 
 (defmacro enable-static-dispatch% (name)
-  (labels ((make-transforms (method prior)
-	     ;; Generate the DEFTRANSFORM forms for a given METHOD and
-	     ;; given list of the PRIOR method specializers.
+  (labels ((make-transform (method)
+	     (with-slots (specializers) method
+	       (if (t-specializer? specializers)
+		   (make-default-transform method)
+		   (make-typed-transform method))))
+
+	   (make-typed-transform (method)
+	     ;; Make DEFTRANSFORM form for specific types
+	     (with-slots (specializers) method
+	       (with-gensyms (args)
+		 `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety))
+
+		    (or (static-overload ',name ',args ',specializers)
+			(sb-c::give-up-ir1-transform))))))
+
+	   (make-default-transform (method)
+	     ;; Make DEFTRANSFORM form for specializers with T types.
+	     ;; A check is made to make sure the arguments are not of
+	     ;; type T before applying the transform.
 
 	     (with-slots (specializers) method
-	       (let ((types (make-types specializers prior)))
-		 (mapcar #'make-transform types))))
+	       (with-gensyms (args node)
+		 `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety) :node ,node)
+		    (or
+		     (when (should-transform? ,node ',specializers)
+		       (static-overload ',name ',args ',specializers))
+		     (sb-c::give-up-ir1-transform))))))
 
-	   (make-transform (types)
-	     ;; Generate the DEFTRANSFORM form for a given list of
-	     ;; TYPES
+	   (t-specializer? (specializer)
+	     (match specializer
+	       ((list* t _)
+		t)
 
-	     (with-gensyms (args)
-	       `(sb-c:deftransform ,name ((&rest ,args) (,@types &rest *) * :policy (> speed safety))
-		  (or (static-overload ',name ',args ',types)
-		      (sb-c::give-up-ir1-transform)))))
-
-	   (make-types (types prior)
-	     ;; For each T type in TYPES, return a specializer list
-	     ;; with the T replaced with the negation of the
-	     ;; corresponding type in each PRIOR specializer list, for
-	     ;; which the prefix of specializer list matches TYPES.
-
-	     (let ((ts (positions t types)))
-	       (if ts
-		   (mapcar (rcurry #'make-negated-types types prior) ts)
-		   (list types))))
-
-	   (make-negated-types (pos types prior)
-	     ;; Substitute the type at index POS with the negation of
-	     ;; all the corresponding types of all PRIOR specializer
-	     ;; lists which have the same prefix as TYPES.
-
-	     (let ((prior (filter-prior pos types prior))
-		   (types (copy-seq types)))
-
-	       (if prior
-		   (aprog1 (copy-seq types)
-		     (setf (elt it pos) `(not (or ,@prior))))
-		   types)))
-
-	   (filter-prior (pos types prior)
-	     ;; Remove prior specializer lists from PRIOR which do not
-	     ;; have the same prefix as TYPES in the range [0, POS).
-
-	     (let ((prefix (subseq types 0 pos)))
-	       (->> (remove-if-not (curry #'is-prefix prefix) prior)
-		    (mapcar (rcurry #'elt pos))
-		    (remove-duplicates))))
-
-	   (is-prefix (prefix types)
-	     ;; Check if a specializer list TYPES matches a given
-	     ;; PREFIX.
-
-	     (starts-with-subseq prefix types :test #'type-match))
-
-	   (type-match (a b)
-	     ;; Check that two types match
-
-	     (match* (a b)
-	       ((t _) t)
-	       ((_ t) t)
-	       ((_ _) (equal a b))))
+	       ((list* _ rest)
+		(t-specializer? rest))))
 
 	   (sort-methods (methods)
 	     (sort methods #'method< :key #'car))
@@ -123,11 +95,33 @@
       `(progn
 	 (sb-c:defknown ,name * * () :overwrite-fndb-silently t)
 
-	 ,@ (reverse
-	     (loop for method in methods
-		for transform = (make-transforms method prior)
-		collect (specializers method) into prior
-		append transform))))))
+	 ,@(reverse (mapcar #'make-transform methods))))))
+
+(defun should-transform? (node specializers)
+  "Checks whether the transform should be applied for a given compilation NODE.
+
+   If SPECIALIZERS contains a T specializer and the corresponding
+   argument type is of type T, which implies the type is undetermined
+   the transform is not performed. Otherwise it is performed."
+
+  (aprog1
+      (let ((t-type (sb-kernel:specifier-type t)))
+	(flet ((is-t? (specializer type)
+		 (and (eq specializer t)
+		      (sb-kernel:type= type t-type))))
+
+	  (with-accessors ((args sb-c::combination-args))
+	      node
+
+	    (when (and (sb-c::combination-p node)
+		       (every #'sb-c::lvar-p args))
+
+	      (->> (mapcar #'sb-c::lvar-type args)
+		   (notany #'is-t? specializers))))))
+    (format t "Should dispatch for ~a: ~a~%" specializers it)))
+
+
+;;; Static Dispatching
 
 (defun static-dispatch (whole &optional env)
   "A no-op on SBCL since static dispatching is handled by the compiler
@@ -145,7 +139,7 @@
 	     (types (order-by-precedence precedence types))
 	     (methods (-<> (aand (gf-methods name) (hash-table-alist it))
 			   (order-method-specializers precedence)
-			   (applicable-methods types)
+			   (applicable-methods types nil)
 			   (sort-methods)
 			   (mapcar #'cdr <>))))
 	(when methods
