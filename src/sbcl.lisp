@@ -45,10 +45,10 @@
 	   (make-typed-transform (method)
 	     ;; Make DEFTRANSFORM form for specific types
 	     (with-slots (specializers) method
-	       (with-gensyms (args)
-		 `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety))
+	       (with-gensyms (args node)
+		 `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety) :node ,node)
 
-		    (or (static-overload ',name ',args ',specializers)
+		    (or (static-overload ',name ',args ',specializers ,node)
 			(sb-c::give-up-ir1-transform))))))
 
 	   (make-default-transform (method)
@@ -61,7 +61,7 @@
 		 `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety) :node ,node)
 		    (or
 		     (when (should-transform? ,node ',specializers)
-		       (static-overload ',name ',args ',specializers))
+		       (static-overload ',name ',args ',specializers ,node))
 		     (sb-c::give-up-ir1-transform))))))
 
 	   (t-specializer? (specializer)
@@ -128,7 +128,7 @@
   (declare (ignore env))
   whole)
 
-(defun static-overload (name args types)
+(defun static-overload (name args types node)
   (when (fboundp name)
     (let ((*current-gf* name)
 	  (gf (fdefinition name)))
@@ -143,7 +143,7 @@
 	(when methods
 	  `(progn
 	     (static-dispatch-test-hook)
-	     ,(inline-methods methods args nil types)))))))
+	     ,(inline-methods methods args (sb-c:policy node (not (or (eql speed 3) (eql safety 0)))) types)))))))
 
 
 ;;; Utilities
