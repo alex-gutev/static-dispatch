@@ -27,8 +27,7 @@ form with the body of the most specific applicable method. If the
 types cannot be determined, or there isn't enough type information the
 generic function call is left as is. Thus in order to choose the
 appropriate method at compile-time rather than runtime, the types of
-the arguments either have to be declared using `DECLARE` or surrounded
-in a `THE` form.
+the arguments must be deduced at compile time.
 
 
 ## Usage
@@ -36,21 +35,53 @@ in a `THE` form.
 The package `STATIC-DISPATCH-CL` is provided which contains all
 symbols in the `COMMON-LISP` package and the shadowed `DEFMETHOD`
 macro. This package should be used/imported instead of `COMMON-LISP`
-as besides exporting the shadowed `DEFMETHOD` symbol, it also exports
-all symbols shadowed by the `CLOSER-COMMON-LISP` package (from
+as besides exporting the shadowed `DEFMETHOD` and `DEFGENERIC`
+symbols, it also exports all symbols shadowed by the
+`CLOSER-COMMON-LISP` package (from
 [closer-mop](https://github.com/pcostanza/closer-mop)) which are
 necessary for closer-mop to function correctly.
 
 Generic functions and methods are defined as usual, using `DEFGENERIC`
-and `DEFMETHOD`. Generic functions are dispatched dynamically, and are
-identical to standard Common Lisp generic function, until the
-following declaration is in place:
+and `DEFMETHOD`. By default, generic functions are dispatched dynamically, and are
+identical to standard Common Lisp generic functions.
 
-   1. `(INLINE <generic function name>)`
+To enable static dispatching for a generic function the following form
+has to be inserted after the definition of the generic function and
+its methods:
 
-In order for the appropriate method to be chosen directly the
-arguments to the generic function call form should be one of the
-following:
+```lisp
+(enable-static-dispatch <generic function name>)
+```
+
+Substitute `<generic function name>` with the name of the generic
+function. The form accepts any number of arguments each interpreted as
+the name of a generic function.
+
+This allows the generic function to be statically dispatched but to
+actually result in the generic function being statically dispatched,
+an `OPTIMIZE` declaration, with a `SPEED` level greater than the
+`SAFETY` level, and an `INLINE` declaration for the generic function
+need to be in place in the lexical environment of the generic function
+call.
+
+**Example:**
+
+```
+(locally (declare (optimize (speed 3) (safety 2))
+                  (inline foo)) ; Static dispatch FOO
+
+    (FOO X Y)) ; Call to FOO statically dispatched if type of X and Y known
+```
+
+
+In order for the appropriate method to be chosen at compile-time the
+types of the arguments to the generic function call must be known.
+
+On SBCL this is dependent on whether the compiler can determine the
+types of the arguments.
+
+On the remaining implementations, the types of the arguments can be
+determined if they are one of the following:
 
    + Variables for which there is a `TYPE` declaration.
    + Functions for which there is an `FTYPE` declaration.
@@ -59,8 +90,13 @@ following:
    + Constants defined using `DEFCONSTANT`.
    + Macros/Symbol-macros which expand to one of the above.
 
-Otherwise no method is chosen and the generic function call form is
-left as is.
+The types of the following special forms can also be determined:
+
+   + `PROGN`
+
+If the types of the arguments cannot be determined, no method is
+chosen and the generic function call form is left as is, which
+fallbacks to the standard dynamic dispatch.
 
 Both `EQL` and class specializers are supported. `EQL` methods will
 only be chosen statically if the argument is one of the following and
@@ -75,8 +111,7 @@ is `EQL` to the specializer's value.
 `EQL` to the specializer's value, it will not be chosen unless it has
 a `TYPE (EQL ...)` declaration.
 
-`CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported
-fully.
+`CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported fully.
 
 The standard method combination is supported, along with `:BEFORE`,
 `:AFTER` and `:AROUND` methods, however user-defined method
@@ -90,28 +125,48 @@ the `ENABLE-HOOK` function has to be called at some point, see
 https://github.com/alex-gutev/cl-environments#documentation for more
 information.
 
+### Prevent Static Dispatching
+
+**NOTE:** On SBCL all generic functions, for which static dispatch is
+enabled, using `ENABLE-STATIC-DISPATCH`, will be statically dispatched,
+regardless of whether the function is declared inline or not, if the
+`SPEED` optimization level exceeds the `SAFETY` optimization level. To
+prevent a function from being statically dispatched in such cases,
+declare it `NOTINLINE`.
+
+**Example:***
+
+```lisp
+(locally (declare (optimize speed)
+                  (notinline foo))
+    (FOO X Y)) ; FOO not statically dispatched
+```
+
+
 ### Optimize Declarations
 
-The optimize `speed` and `safety` declarations affect the code that is
-inserted in place of the generic function call
+As stated earlier the `SPEED` level, in an `OPTIMIZE` declaration,
+must be greater than the `SAFETY` level for static dispatch to be
+performed.
+
+Additionally the values of the `SPEED` and `SAFETY` levels affect the
+code that is inserted in place of the generic function call
 expression. Specifically, the definition of the lexical
-`CALL-NEXT-METHOD` functions.
+`CALL-NEXT-METHOD` function.
 
 The types of the arguments which may be passed to `CALL-NEXT-METHOD`
-are unknown. An optimize declaration with a `SAFETY` level greater
-than or equal to the level for `SPEED` will result in type checks,
-using `CHECK-TYPE`, being inserted in the `CALL-NEXT-METHOD`
-definition to check that the arguments are of the expected type given
-in the method's specializer list. This will result in a condition
-being raised if arguments of an incorrect type are passed to
-`CALL-NEXT-METHOD`. However, if the `SPEED` optimize level is greater
-than the `SAFETY` level the type checks are not inserted. It is then
-the programmer's responsibility to ensure that the arguments passed to
-`CALL-NEXT-METHOD` are of the types specified in specializer list of
-the next most specific method. If `CALL-NEXT-METHOD` is called with no
-arguments, which means it is called with the same arguments passed to
-the current method, the arguments are guaranteed to be of the correct
-type.
+are unknown. By default type checks, using `CHECK-TYPE`,
+for the arguments are added. A condition is raised if the types of the
+arguments passed to `CALL-NEXT-METHOD` are not compatible with the
+types in the next applicable method's specializer list.
+
+When a `SPEED` level of 3 or a `SAFETY` level of 0 is given, the type
+checks are omitted and it is the programmer's responsibility to ensure
+that the arguments passed to the next method are compatible with the
+types in the method's specializer list. When `CALL-NEXT-METHOD` is
+called with no arguments, which is equivalent to being called with the
+same arguments as the current method, the argument types are
+guaranteed to be compatible.
 
 #### Examples
 
@@ -131,7 +186,7 @@ checks being inserted:
 ```lisp
 (locally
   (declare (inline foo)
-           (optimize (speed 2) (safety 2)))
+           (optimize (speed 2) (safety 1)))
 
   (declare (type integer x))
 
@@ -151,9 +206,8 @@ similar to the following (simplified to remove the case of
  (list :integer (call-next-method (1+ x))))
 ```
 
-If the optimize declaration is changed to `(optimize (speed 3)
-(safety 0))`, the type checks are omitted which results in the
-following:
+If the optimize declaration is changed to `(optimize (speed 3) (safety
+0))`, the type checks are omitted which results in the following:
 
 ```lisp
 (flet
@@ -179,11 +233,14 @@ otherwise returns `FORM` as is.
 
 `ENV` is the lexical environment of the generic function call.
 
+**NOTE:** On SBCL this is a no-op since IR1 transforms, using
+`SB-C:DEFTRANSFORM`, specified directly on the argument types, are
+used rather than compiler macros.
+
 ### Common Pitfalls
 
 The semantics of generic functions are changed when statically
-dispatched, that is when they are declared `inline` in the environment
-in which they are called.
+dispatched.
 
 Statically dispatched generic functions are dispatched based on the
 declared types of the arguments at compile-time. The declared type may
@@ -209,15 +266,16 @@ And consider the following code:
 ```lisp
 (let ((x 1))
   (declare (type number x)
+           (optimize speed)
            (inline foo))
 
   (foo x))
 ```
 
-When statically dispatched, as in the above example with the `(INLINE
-FOO)` declaration, the method specialized on `NUMBER` will be called
-and hence `(FOO X)` will evaluate to `(:NUMBER 1)`. However since `X`
-is actually bound to an integer value, with dynamic dispatch, when the
+Since `FOO` is statically dispatched, the method specialized on
+`NUMBER` will be called, due to the `(TYPE NUMBER X)` declaration, and
+hence `(FOO X)` will evaluate to `(:NUMBER 1)`. However since `X` is
+actually bound to an integer value, with dynamic dispatch, when the
 `(INLINE FOO)` declaration is removed, the method specialized on
 `INTEGER` will be called and hence `(FOO X)` will evaluate to
 `(:INTEGER 1)`.
@@ -232,8 +290,8 @@ statically dispatched functions for optimization where each method has
 the same behaviour just implemented for different types.
 
 **NOTE:** If the type of an argument cannot be determined, or is
-declared `T`, the generic function will not be statically dispatched even
-if an `INLINE` declaration is in place.
+declared `T`, the generic function will not be statically dispatched
+even if an `INLINE` and `OPTIMIZE` declaration is in place.
 
 Another aspect in which the semantics of generic functions are changed
 is that when dynamically dispatched the list of methods can be changed
@@ -259,13 +317,13 @@ shown in
 [https://github.com/guicho271828/inlined-generic-function#user-content-result].
 
 Static-Dispatch does not use a custom generic function metaclass thus
-generic functions are identical to standard common lisp generic
-functions, and hence the usual optimizations are performed, unless an
-`INLINE` declaration is in place. This only matters when generic
-functions are not inlined, however the goal of this library is to
-provide generic function inlining as an optimization for cases where
-it is known that standard dynamic dispatch is too slow, not to provide
-inlining by default.
+generic functions are identical to standard Common Lisp generic
+functions, and hence the usual optimizations are performed, when
+dynamically dispatched. This only matters when generic functions are
+not inlined, however the goal of this library is to provide generic
+function inlining as an optimization for cases where it is known that
+standard dynamic dispatch is too slow, not to provide inlining by
+default.
 
 In Static-Dispatch the generic function call form is directly replaced
 with the body of the most-specific applicable method, whereas in
