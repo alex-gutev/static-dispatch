@@ -147,27 +147,28 @@
 ;;; DEFMETHOD and DEFGENERIC Macros
 
 (defmacro defmethod (name &rest args)
-  (or
-   (handler-case
-       (multiple-value-bind (qualifier specializers lambda-list body)
-	   (parse-method args)
+  `(walk-environment
+     ,(or
+       (handler-case
+	   (multiple-value-bind (qualifier specializers lambda-list body)
+	       (parse-method args)
 
-	 (ensure-method-info name qualifier specializers :body body :lambda-list lambda-list)
+	     (ensure-method-info name qualifier specializers :body body :lambda-list lambda-list)
 
-	 (alet `(c2mop:defmethod ,name ,@args)
-	   (if (has-eql-specializer? specializers)
-	       `(aprog1 ,it
-		  (ensure-method-info
-		   ',name
-		   ',qualifier
-		   (mapcar #'specializer->cl (method-specializers it))
-		   :body ',body
-		   :lambda-list ',lambda-list))
-	       it)))
-     (match-error () (mark-no-dispatch name))
-     (not-supported ()))
+	     (alet `(c2mop:defmethod ,name ,@args)
+	       (if (has-eql-specializer? specializers)
+		   `(aprog1 ,it
+		      (ensure-method-info
+		       ',name
+		       ',qualifier
+		       (mapcar #'specializer->cl (method-specializers it))
+		       :body ',body
+		       :lambda-list ',lambda-list))
+		   it)))
+	 (match-error () (mark-no-dispatch name))
+	 (not-supported ()))
 
-   `(c2mop:defmethod ,name ,@args)))
+       `(c2mop:defmethod ,name ,@args))))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
   (handler-case
@@ -194,7 +195,8 @@
     (match-error () (mark-no-dispatch name))
     (not-supported ()))
 
-  `(c2mop:defgeneric ,name ,lambda-list ,@options))
+  `(walk-environment
+     (c2mop:defgeneric ,name ,lambda-list ,@options)))
 
 
 ;;; Parsing Method Definitions
