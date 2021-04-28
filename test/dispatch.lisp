@@ -48,19 +48,28 @@
 ;;;;  case generic functions fallback to the standard dynamic
 ;;;;  dispatch.
 
-(defpackage :static-dispatch-test-dispatch
+(defpackage :static-dispatch/test.dispatch
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
 	:trivia
 
-	:prove
-	:static-dispatch-test-util))
+	:fiveam
+	:static-dispatch/test))
 
-(in-package :static-dispatch-test-dispatch)
+(in-package :static-dispatch/test.dispatch)
 
+
+;;; Test suite definition
 
-;;; Generic Function with Primary Methods
+(def-suite dispatch
+    :description "Test simple static dispatching."
+    :in static-dispatch)
+
+(in-suite dispatch)
+
+
+;;; Definitions used by tests
 
 (defgeneric add (a b))
 
@@ -73,7 +82,6 @@
 (defmethod add (a b)
   (list a b))
 
-
 ;;; Macros
 
 (defmacro pass-through (form)
@@ -84,18 +92,18 @@
 
 (defconstant +a-constant+ 10)
 
-
-;;; Tests
-
 ;; Enable static dispatch
 (enable-static-dispatch add)
 
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
-(plan nil)
+
+;;; Tests
 
-(subtest "Constant Arguments"
+(test dispatch-constant-arguments
+  "Test static dispatching on constant arguments"
+
   (locally (declare (optimize speed)
 		    (inline add))
 
@@ -104,7 +112,9 @@
     (test-dispatch (add 'x 'y) '(x y) :test-dispatch nil)
     (test-dispatch (add +a-constant+ 1) '(number 11))))
 
-(subtest "Variables with Type Declarations"
+(test dispatch-typed-variables
+  "Test static dispatching on variables with TYPE declarations"
+
   (let ((x-int 1) (y-int 2) (z-int 3)
 	(x-string "hello") (y-string "world")
 	(x 'x) (y 'y))
@@ -128,7 +138,9 @@
     (test-dispatch (add x 1) '(x 1) :test-dispatch nil)
     (test-dispatch (add x-int x-string) '(1 "hello") :test-dispatch nil)))
 
-(subtest "Functions with FTYPE Declarations"
+(test dispatch-typed-functions
+  "Test static dispatching on functions with FTYPE declarations"
+
   (flet ((neg (x)
 	   (- x))
 
@@ -165,7 +177,9 @@
       (test-dispatch (add (neg 3) "x") '(-3 "x") :test-dispatch nil)
       (test-dispatch (add hello (neg 9)) '("hello" -9) :test-dispatch nil))))
 
-(subtest "THE forms"
+(test dispatch-the-forms
+  "Test static dispatching on THE forms"
+
   (flet ((f (x) x))
     (let ((x 5)
 	  (hello "hello"))
@@ -190,7 +204,9 @@
 			  "world")
 		     '(string "hello" "world")))))
 
-(subtest "Macros"
+(test dispatch-macros
+  "Test static dispatching on macro forms"
+
   (macrolet
       ((pass1 (x) x)
        (pass2 (y) y)
@@ -227,5 +243,3 @@
 			 '(1 "world")
 
 			 :test-dispatch nil))))))
-
-(finalize)

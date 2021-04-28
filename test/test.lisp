@@ -1,6 +1,6 @@
-;;;; util.lisp
+;;;; test.lisp
 ;;;;
-;;;; Copyright 2019-2021 Alexander Gutev
+;;;; Copyright 2021 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -23,27 +23,33 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-;;;; Utilities for testing static-dispatch
+;;;; Master test suite
 
-(defpackage :static-dispatch-test-util
+(defpackage :static-dispatch/test
   (:use :static-dispatch-cl
-	:alexandria
-	:arrows
-	:trivia
+	:fiveam)
 
-	:prove)
+  (:import-from :alexandria
+		:with-gensyms)
 
-  (:export :test-dispatch
+  (:export :static-dispatch
+	   :test-dispatch
 	   :suppress-output
-	   :test-error))
+	   :test-error
+	   :is-print))
 
-(in-package :static-dispatch-test-util)
+(in-package :static-dispatch/test)
 
-;;; Test Hook macro
+(def-suite static-dispatch
+    :description "Static Dispatch Tests")
 
-;;; On SBCL where DEFTRANSFORM is used rather than a compiler-macro,
-;;; STATIC-DISPATCH-TEST-HOOK has to be a global macro rather than a
-;;; MACROLET, as MACROLETS in the transformed form are not expanded.
+(in-suite static-dispatch)
+
+(defun test-static-dispatch ()
+  (run! 'static-dispatch))
+
+
+;;; Utilities
 
 (defvar *static-dispatch*)
 
@@ -53,18 +59,35 @@
 (defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
   `(let ((*static-dispatch* nil))
      (is
-      (with-open-stream (*standard-output* (make-broadcast-stream)) ,call)
-      ,result)
+      (equal
+       ,result
+       (suppress-output ,call)))
 
      ,(when test-dispatch
-	`(is *static-dispatch* ,static-p
-	     ,(format nil "~a ~a dispatched"
-		      call
-		      (if static-p "statically" "dynamically"))))))
+	`(,(if static-p 'is-true 'is-false)
+	   *static-dispatch*
+	   ,(format nil "~a ~a dispatched"
+		    call
+		    (if static-p "statically" "dynamically"))))))
 
 (defmacro suppress-output (&body forms)
   `(with-open-stream (*standard-output* (make-broadcast-stream))
      ,@forms))
 
 (defmacro test-error (form error)
-  `(is-error (suppress-output ,form) ,error))
+  `(signals ,error (suppress-output ,form)))
+
+(defmacro is-print (form string)
+  "Test that the evaluation of FORM results in STRING being printed to
+  *STANDARD-OUTPUT*"
+
+  (with-gensyms (output expected)
+    `(let ((,output
+	    (with-output-to-string (*standard-output*)
+	      ,form))
+	   (,expected ,string))
+
+       (is (string= ,expected ,output)
+	   "Expected ~a to print:~%~a~%Got:~%~a"
+	   ,expected
+	   ,output))))

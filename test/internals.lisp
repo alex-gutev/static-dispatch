@@ -1,6 +1,6 @@
 ;;;; internals.lisp
 ;;;;
-;;;; Copyright 2018 Alexander Gutev
+;;;; Copyright 2018-2021 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -25,13 +25,14 @@
 
 ;;;; Unit Tests
 
-(defpackage :static-dispatch-test-internals
+(defpackage :static-dispatch/test.internals
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
 	:trivia
 
-	:prove)
+	:static-dispatch/test
+	:fiveam)
 
   (:import-from
    :static-dispatch
@@ -58,182 +59,285 @@
    :inline-methods
    :block-name))
 
-(in-package :static-dispatch-test-internals)
+(in-package :static-dispatch/test.internals)
 
-(plan nil)
+
+;;; Test suite definition
 
-(subtest "DEFMETHOD form parser"
-  ;; Test parse-method function
+(def-suite internals
+    :description "Test internals of static-dispatching."
+    :in static-dispatch)
 
-  ;; Simple method with only required parameters and class specializers
-  (subtest "Required Arguments with Class Specializers"
-    (is-values (parse-method
-		'(((a number) b (c character) (d t))
-		  (declare (ignore d))
-		  (pprint c)
-		  (+ a b)))
+(in-suite internals)
 
-	       '(nil
-		 (number t character t)
-		 (a b c d)
-		 ((declare (ignore d))
-		  (pprint c)
-		  (+ a b)))))
+
+;;; Test DEFMETHOD parsing
 
-  ;; Same method with an EQL specializer
+(defmacro test-parse (expected method-form)
+  `(is (equal
+	,expected
 
-  (subtest "Required Arguments with EQL specializers"
-    (is-values (parse-method
-		'(((a number) b (c character) (d t) (e (eql 3)))
-		  (declare (ignore d))
-		  (pprint c)
-		  (+ a b)))
+	(multiple-value-list
+	 (parse-method ,method-form)))))
 
-	       '(nil
-		 (number t character t (eql 3))
-		 (a b c d e)
-		 ((declare (ignore d))
-		  (pprint c)
-		  (+ a b)))))
+(test defmethod-parse-required-with-class-specializers
+  "Test parsing required arguments with class specializers"
 
-  ;; Other argument types
-  (subtest "Optional, Rest and Keyword Arguments"
-    (let ((required '((a number) b (c character) (d t) (e (eql 3))))
-	  (other-args '(&optional x (y 1) &rest args &key x (y 'y y-p) (z)))
-	  (body '((declare (ignore d))
-		  (pprint c)
-		  (+ a b))))
+  (test-parse
+   '(nil
+     (number t character t)
+     (a b c d)
+     ((declare (ignore d))
+      (pprint c)
+      (+ a b)))
 
-      (is-values (parse-method `((,@required ,@other-args) ,@body))
-		 `(nil
-		   (number t character t (eql 3))
-		   (a b c d e ,@other-args)
-		   ,body))))
+   '(((a number) b (c character) (d t))
+     (declare (ignore d))
+     (pprint c)
+     (+ a b))))
 
-  (subtest ":BEFORE Qualifiers"
-    (is-values
-     (parse-method '(:before (a (b number) (c character)) (pprint c) (+ a b)))
+(test defmethod-parse-required-with-eql-specializers
+  "Test parsing required arguments with EQL specializers"
 
-     '(:before
-       (t number character)
-       (a b c)
+  (test-parse
+   '(nil
+     (number t character t (eql 3))
+     (a b c d e)
+     ((declare (ignore d))
+      (pprint c)
+      (+ a b)))
 
-       ((pprint c)
-	(+ a b)))))
+   '(((a number) b (c character) (d t) (e (eql 3)))
+     (declare (ignore d))
+     (pprint c)
+     (+ a b))))
 
-  ;; Qualifiers - Should raise a MATCH-ERROR as qualifiers are not supported yet.
+(test defmethod-parse-optional-rest-keyword
+  "Test parsing optional, rest and keyword arguments"
 
-  (subtest "Unsupported Feature Errors"
-    (is-error (parse-method '(and (a (b number) (c character)) (pprint c) (+ a b)))
-	      'trivia:match-error)))
+  (let ((required '((a number) b (c character) (d t) (e (eql 3))))
+	(other-args '(&optional x (y 1) &rest args &key x (y 'y y-p) (z)))
+	(body '((declare (ignore d))
+		(pprint c)
+		(+ a b))))
+
+    (test-parse
+     `(nil
+       (number t character t (eql 3))
+       (a b c d e ,@other-args)
+       ,body)
+
+     `((,@required ,@other-args) ,@body))))
+
+(test defmethod-parse-before-qualifier
+  "Test parsing :BEFORE qualifiers"
+
+  (test-parse
+   '(:before
+     (t number character)
+     (a b c)
+
+     ((pprint c)
+      (+ a b)))
+
+   '(:before (a (b number) (c character)) (pprint c) (+ a b))))
+
+(test defmethod-unsupported-qualifier-error
+  "Test error signalled when parsing unsupported qualifier"
+
+  (signals trivia:match-error
+    (parse-method '(and (a (b number) (c character)) (pprint c) (+ a b)))))
+
+
+;;; DEFMETHOD Macro Tests
 
 ;; Generic function used in testing the DEFMETHOD macro.
 
 (defgeneric equal? (a b))
 
-(subtest "DEFMETHOD macro"
-  ;; Test that that the DEFMETHOD macro is adding the method
-  ;; information to the generic function method table.
+;;; DEFMETHOD forms for EQUAL? Methods
 
-  (let ((*generic-function-table* (make-hash-table :test #'eq)))
-    (subtest "Add Specialized Method"
-      (let* ((method `(static-dispatch:defmethod equal? ((a number) (b number))
-			(= a b))))
+(define-symbol-macro equal?-method1
+    '(static-dispatch:defmethod equal? ((a number) (b number))
+      (= a b)))
 
-	(macroexpand method)
+(define-symbol-macro equal?-method2
+    '(static-dispatch:defmethod equal? (a b)
+      (eq a b)))
 
-	;; Check that a method table was created for EQUAL?
-	(ok (gf-methods 'equal?))
+(define-symbol-macro equal?-method3
+    '(static-dispatch:defmethod equal? ((x (eql 'all)) (y t)) t))
 
-	(let ((method-info (gf-method 'equal? '(nil (number number)))))
-	  ;; Check that the method was added to the method table for
-	  ;; EQUAL?
+(define-symbol-macro equal?-method4
+    '(static-dispatch:defmethod equal? :before ((x integer) y)
+      (pprint x)
+      (pprint y)))
 
-	  (ok method-info)
-	  (is (lambda-list method-info) '(a b))
-	  (is (qualifier method-info) nil)
-	  (is (specializers method-info) '(number number))
-	  (is (body method-info) (cdddr method)))))
+(define-symbol-macro equal?-method5
+    '(static-dispatch:defmethod equal? and (x y)
+      (pprint x)
+      (pprint y)))
 
-    (subtest "Add Non-Specialized Method"
-      (let* ((method `(static-dispatch:defmethod equal? (a b)
-			(eq a b))))
+(def-fixture method-table ()
+  ;; "Bind *GENERIC-FUNCTION-TABLE* to a new hash-table and surround the
+  ;;  body in the dynamic binding context"
 
-	(macroexpand method)
+  (let ((*generic-function-table* (make-hash-table :test #'equal)))
+    (&body)))
 
-	;; Check that the (NUMBER NUMBER) method is still in the method
-	;; table
-	(ok (gf-method 'equal? '(nil (number number))))
+;; Test that that the DEFMETHOD macro is adding the method
+;; information to the generic function method table.
 
-	(let ((method-info (gf-method 'equal? '(nil (t t)))))
-	  ;; Check that the method was added to the method table for
-	  ;; EQUAL?
+(test (defmethod-specialized-method :fixture method-table)
+  "Test DEFMETHOD with specialized arguments"
 
-	  (ok method-info)
-	  (is (lambda-list method-info) '(a b))
-	  (is (qualifier method-info) nil)
-	  (is (specializers method-info) '(t t))
-	  (is (body method-info) (cdddr method)))))
+  (macroexpand equal?-method1)
 
-    (subtest "Add Method with EQL specializers"
-      (let* ((method `(static-dispatch:defmethod equal? ((x (eql 'all)) (y t)) t)))
+  ;; Check that a method table was created for EQUAL?
+  (is-true (gf-methods 'equal?)
+	   "Method table not created for EQUAL?")
 
-	;; Evaluate DEFMETHOD form to actually create the method and add
-	;; a method for (EQL ALL) to the generic function table
-	(eval method)
+  (let ((method-info (gf-method 'equal? '(nil (number number)))))
+    ;; Check that the method was added to the method table for
+    ;; EQUAL?
 
-	(let ((method-info (gf-method 'equal? '(nil ((eql all) t)))))
-	  ;; Check that the method was added to the method table for
-	  ;; EQUAL?
+    (is (typep method-info 'method-info)
+	"Method for (NIL (NUMBER NUMBER)) not a `METHOD-INFO' object. Got:~% ~a"
+	method-info)
 
-	  (ok method-info)
-	  (is (lambda-list method-info) '(x y))
-	  (is (qualifier method-info) nil)
-	  (is (specializers method-info) '((eql all) t))
-	  (is (body method-info) (cdddr method)))))
+    (is (equal '(a b) (lambda-list method-info)))
+    (is (equal nil (qualifier method-info)))
+    (is (equal '(number number) (specializers method-info)))
+    (is (equal (cdddr equal?-method1) (body method-info)))))
 
-    ;; Test Qualifiers
+(test (defmethod-non-specialized-method :fixture method-table
+	:depends-on defmethod-specialized-method)
 
-    (subtest "Add Method with :BEFORE qualifier"
-      (let ((method '(static-dispatch:defmethod equal? :before ((x integer) y)
-		      (pprint x)
-		      (pprint y))))
+  "test DEFMETHOD without specialized arguments"
 
-	(macroexpand method)
+  ;; Expand previous methods
+  (macroexpand equal?-method1)
 
-	;; Check Existing Methods
-	(ok (gf-method 'equal? '(nil (number number))))
-	(ok (gf-method 'equal? '(nil (t t))))
-	(ok (gf-method 'equal? '(nil ((eql 'all) t))))
+  ;; Expand this method
+  (macroexpand equal?-method2)
 
-	(let ((method-info (gf-method 'equal? '(:before (integer t)))))
-	  (ok method-info)
-	  (is (lambda-list method-info) '(x y))
-	  (is (qualifier method-info) :before)
-	  (is (specializers method-info) '(integer t))
-	  (is (body method-info) (cddddr method)))))
+  ;; Check that the (NUMBER NUMBER) method is still in the method
+  ;; table
+  (is (typep (gf-method 'equal? '(nil (number number))) 'method-info)
+      "Method for (NIL (NUMBER NUMBER)) no-longer in method table")
 
-    ;; Test Unsupported Features
+  (let ((method-info (gf-method 'equal? '(nil (t t)))))
+    ;; Check that the method was added to the method table for
+    ;; EQUAL?
 
-    (macroexpand '(static-dispatch:defmethod equal? and (x y)
-		   (pprint x)
-		   (pprint y)))
+    (is (typep method-info 'method-info)
+	"Method for (NIL (NUMBER NUMBER)) not a `METHOD-INFO' object. Got:~%~a"
+	method-info)
 
+    (is (equal '(a b) (lambda-list method-info)))
+    (is (equal nil (qualifier method-info)))
+    (is (equal '(t t) (specializers method-info)))
+    (is (equal (cdddr equal?-method2) (body method-info)))))
 
-    ;; Check that the method table for equal? was removed as
-    ;; method combinations are not supported.
+(test (defmethod-eql-specializer
+	  :fixture method-table
+	:depends-on (and defmethod-specialized-method
+			 defmethod-non-specialized-method))
 
-    (is (gf-methods 'equal?) nil)
+  "Test DEFMETHOD with EQL specializers"
 
-    ;; Check that even if a new method with no qualifiers is defined,
-    ;; the method table will not be recreated.
+  ;; Expand previous methods
+  (macroexpand equal?-method1)
+  (macroexpand equal?-method2)
 
-    (macroexpand '(static-dispatch:defmethod equal? (x y)
-		   (pprint x)
-		   (pprint y)))
+  ;; Evaluate DEFMETHOD form to actually create the method and add
+  ;; a method for (EQL ALL) to the generic function table
+  (eval equal?-method3)
 
-    (is (gf-methods 'equal?) nil)))
+  (let ((method-info (gf-method 'equal? '(nil ((eql all) t)))))
+    ;; Check that the method was added to the method table for
+    ;; EQUAL?
 
+    (is (typep method-info 'method-info)
+	"Method for (NIL ((EQL ALL) T)) not a `METHOD-INFO' object. Got~%~a"
+	method-info)
+
+    (is (equal '(x y) (lambda-list method-info)))
+    (is (equal nil (qualifier method-info)))
+    (is (equal '((eql all) t) (specializers method-info)))
+    (is (equal (cdddr equal?-method3) (body method-info)))))
+
+(test (defmethod-before-qualifier
+	  :fixture method-table
+	:depends-on (and defmethod-specialized-method
+			 defmethod-non-specialized-method
+			 defmethod-eql-specializer))
+
+  "Test DEFMETHOD with :BEFORE qualifier"
+
+  ;; Expand previous methods
+  (eval equal?-method1)
+  (eval equal?-method2)
+  (eval equal?-method3)
+
+  ;; Expand current method
+  (macroexpand equal?-method4)
+
+  ;; Check that previous methods still in method table
+  (is (typep (gf-method 'equal? '(nil (number number))) 'method-info)
+      "Method for (NIL (NUMBER NUMBER)) no longer in method table.")
+
+  (is (typep (gf-method 'equal? '(nil (t t))) 'method-info)
+      "Method for (NIL (T T)) no longer in method table")
+
+  (is (typep (gf-method 'equal? '(nil ((eql 'all) t))) 'method-info)
+      "Method for (NIL (EQL ALL) T) no longer in method table.")
+
+  (let ((method-info (gf-method 'equal? '(:before (integer t)))))
+    (is (typep method-info 'method-info)
+	"Method for (:BEFORE (INTEGER T)) not a `METHOD-INFO' object. Got: ~a~%"
+	method-info)
+
+    (is (equal '(x y) (lambda-list method-info)))
+    (is (equal :before (qualifier method-info)))
+    (is (equal '(integer t) (specializers method-info)))
+    (is (equal (cddddr equal?-method4) (body method-info)))))
+
+(test (defmethod-unsupported-qualifier
+	  :fixture method-table
+	:depends-on (and defmethod-specialized-method
+			 defmethod-non-specialized-method
+			 defmethod-eql-specializer
+			 defmethod-before-qualifier))
+
+  "Test DEFMETHOD with unsupported qualifier"
+
+  ;; Expand previous methods
+  (eval equal?-method1)
+  (eval equal?-method2)
+  (eval equal?-method3)
+  (eval equal?-method4)
+
+  (macroexpand equal?-method5)
+
+  ;; Check that the method table for equal? was removed as
+  ;; method combinations are not supported.
+
+  (is-false (gf-methods 'equal?)
+	    "Method table for EQUAL? not removed.")
+
+  ;; Check that even if a new method with no qualifiers is defined,
+  ;; the method table will not be recreated.
+
+  (macroexpand '(static-dispatch:defmethod equal? (x y)
+		 (pprint x)
+		 (pprint y)))
+
+  (is-false (gf-methods 'equal?)
+	    "New method added to removed method table for EQUAL?"))
+
+
+;;; Specializer Ordering Tests
 
 ;; Classes used to test method ordering
 
@@ -243,162 +347,201 @@
 (c2mop:defclass child (person)
   (parent))
 
+;; Tests that the methods are being ordered correctly based on
+;; specificity.
 
-(subtest "Method Ordering"
-  ;; Tests that the methods are being ordered correctly based on
-  ;; specificity.
+(test specializer-order-class-precedence
+  "Test specializer ordering based on class precedence"
 
-  (subtest "Specializer Ordering"
-    ;; Test SPECIALIZE< function
+  (is-true (specializer< '(child t) '(person number)))
+  (is-false (specializer< '(person number) '(child t))))
 
-    ;; Test ordering based on class precedence
-    (ok (specializer< '(child t) '(person number)))
-    (is (specializer< '(person number) '(child t)) nil)
+(test specializer-order-same-first-specializer
+  "Test specializer ordering with same initial specializers"
 
-    ;; Test ordering when first argument specializers are identical
-    (ok (specializer< '(child number) '(child t)))
-    (is (specializer< '(child t) '(child number)) nil)
+  (is-true (specializer< '(child number) '(child t)))
+  (is-false (specializer< '(child t) '(child number))))
 
-    ;; Test ordering when initial specializers are unrelated classes.
-    (ok (specializer< '(child number) '(character t)))
-    (is (specializer< '(character t) '(child number)) nil)
+(test sepcializer-order-initial-unrelated-classes
+  "Test specializer ordering on unrelated classes in initial specializers"
 
-    ;; Test ordering when all specializers are unrelated classes. In
-    ;; this case the specializers should be ordered based on the
-    ;; orderings of the names of the classes of the last
-    ;; specializers. This is to ensure that there is a total ordering
-    ;; of class specializers.
-    (ok (specializer< '(child number) '(character string)))
-    (is (specializer< '(character string) '(child number)) nil)
+  (is-true (specializer< '(child number) '(character t)))
+  (is-false (specializer< '(character t) '(child number))))
 
-    ;; Test EQL specializers
-    (ok (specializer< '((eql all) t) '(child number)))
-    (is (specializer< '(child number) '((eql all) t)) nil)
+;; Test ordering when all specializers are unrelated classes. In
+;; this case the specializers should be ordered based on the
+;; orderings of the names of the classes of the last
+;; specializers. This is to ensure that there is a total ordering
+;; of class specializers.
 
-    ;; Test ordering of identical EQL specializers
-    (ok (specializer< '((eql all) number) '((eql all) t)))
-    (is (specializer< '((eql all) t) '((eql all) number)) nil)
+(test specializer-order-unrelated-class-names
+  "Test specializer ordering based on unrelated class names"
 
-    ;; Test ordering of different EQL specializers
-    (is (specializer< '((eql 1) number) '((eql 2) t)) nil))
+  (is-true (specializer< '(child number) '(character string)))
+  (is-false (specializer< '(character string) '(child number))))
 
-  (let* ((methods
-	  (mapcar
-	   #'list
-	   '((nil (number t))
-	     (:before (character t))
-	     (nil (character character))
-	     (nil (t t))
-	     (nil (hash-table t))
-	     (nil (person person))
-	     (nil (integer t))
-	     (nil (t (eql 1)))
-	     (nil ((eql x) t))
-	     (nil ((eql x) string))
-	     (:before (number number))
-	     (nil (person child))
-	     (:before (integer t))))))
+(test specializer-order-eql-specializers
+  "Test EQL specializer ordering"
 
-    (subtest "Method ordering based on specializer ordering"
-      ;; Test SORT-METHODS function
+  (is-true (specializer< '((eql all) t) '(child number)))
+  (is-false (specializer< '(child number) '((eql all) t))))
 
-      (is (sort-methods (copy-list methods))
-	  (mapcar
-	   #'list
-	   '((:before (character t))
-	     (:before (integer t))
-	     (:before (number number))
-	     (nil ((eql x) string))
-	     (nil ((eql x) t))
-	     (nil (character character))
-	     (nil (person child))
-	     (nil (person person))
-	     (nil (hash-table t))
-	     (nil (integer t))
-	     (nil (number t))
+(test sepcializer-order-same-eql-specializers
+  "Test ordering of identical EQL specializers"
 
-	     (nil (t (eql 1)))
-	     (nil (t t))))))
+  (is-true (specializer< '((eql all) number) '((eql all) t)))
+  (is-false (specializer< '((eql all) t) '((eql all) number))))
 
-    (subtest "Determining the applicable methods"
-      ;; Test APPLICABLE-METHODS function
+(test specializer-order-different-eql-specializers
+  "Test ordering of different EQL specializers"
 
-      (is (applicable-methods methods '(integer integer))
-	  (mapcar
-	   #'list
-	   '((nil (number t))
-	     (nil (t t))
-	     (nil (integer t))
-	     (:before (number number))
-	     (:before (integer t)))))
+  (is-false (specializer< '((eql 1) number) '((eql 2) t))))
 
-      (is (applicable-methods methods '(number number))
-	  (mapcar
-	   #'list
-	   '((nil (number t))
-	     (nil (t t))
-	     (:before (number number)))))
+
+;;; Method Ordering Tests
 
-      (is (applicable-methods methods '(number t)) nil)
+(define-symbol-macro method-order-test-methods
+    (mapcar
+     #'list
+     '((nil (number t))
+       (:before (character t))
+       (nil (character character))
+       (nil (t t))
+       (nil (hash-table t))
+       (nil (person person))
+       (nil (integer t))
+       (nil (t (eql 1)))
+       (nil ((eql x) t))
+       (nil ((eql x) string))
+       (:before (number number))
+       (nil (person child))
+       (:before (integer t)))))
 
-      (is (applicable-methods methods '(hash-table t))
-	  (mapcar
-	   #'list
-	   '((nil (t t))
-	     (nil (hash-table t)))))
+(test method-order-specializer-order
+  "Test method ordering based on specializer ordering"
 
-      (is (applicable-methods methods '(child child))
-	  (mapcar
-	   #'list
-	   '((nil (t t))
-	     (nil (person person))
-	     (nil (person child)))))
+  (is (equal
+       (mapcar
+	#'list
+	'((:before (character t))
+	  (:before (integer t))
+	  (:before (number number))
+	  (nil ((eql x) string))
+	  (nil ((eql x) t))
+	  (nil (character character))
+	  (nil (person child))
+	  (nil (person person))
+	  (nil (hash-table t))
+	  (nil (integer t))
+	  (nil (number t))
 
-      (is (applicable-methods methods '(child person))
-	  (mapcar
-	   #'list
-	   '((nil (t t))
-	     (nil (person person)))))
+	  (nil (t (eql 1)))
+	  (nil (t t))))
 
-      (is (applicable-methods methods '((eql x) number))
-	  (mapcar
-	   #'list
-	   '((nil (t t))
-	     (nil ((eql x) t)))))
+       (sort-methods method-order-test-methods))))
 
-      ;; Check that if there is not enough type information for an
-      ;; argument and not all the specializers for that argument, of
-      ;; all methods, are T then APPLICABLE-METHODS returns nil.
-      (is (applicable-methods methods '(t t)) nil))))
+(test method-order-applicable-methods
+  "Test determining the applicable methods"
 
+  (is (equal
+       (mapcar
+	#'list
+	'((nil (number t))
+	  (nil (t t))
+	  (nil (integer t))
+	  (:before (number number))
+	  (:before (integer t))))
 
-(subtest "Ordering by generic function argument precedence order"
-  ;; Test PRECEDENCE-ORDER function
+       (applicable-methods method-order-test-methods '(integer integer))))
 
-  (is (precedence-order '(a b c &optional d e) '(c a b)) '(2 0 1))
+  (is (equal
+       (mapcar
+	#'list
+	'((nil (number t))
+	  (nil (t t))
+	  (:before (number number))))
+
+       (applicable-methods method-order-test-methods '(number number))))
+
+  (is (equal
+       nil
+       (applicable-methods method-order-test-methods '(number t))))
+
+  (is (equal
+       (mapcar
+	#'list
+	'((nil (t t))
+	  (nil (hash-table t))))
+
+       (applicable-methods method-order-test-methods '(hash-table t))))
+
+  (is (equal
+       (mapcar
+	#'list
+	'((nil (t t))
+	  (nil (person person))
+	  (nil (person child))))
+
+       (applicable-methods method-order-test-methods '(child child))))
+
+  (is (equal
+       (mapcar
+	#'list
+	'((nil (t t))
+	  (nil (person person))))
+
+       (applicable-methods method-order-test-methods '(child person))))
+
+  (is (equal
+       (mapcar
+	#'list
+	'((nil (t t))
+	  (nil ((eql x) t))))
+
+       (applicable-methods method-order-test-methods '((eql x) number))))
+
+  ;; Check that if there is not enough type information for an
+  ;; argument and not all the specializers for that argument, of
+  ;; all methods, are T then APPLICABLE-METHODS returns nil.
+
+  (is (equal
+       nil
+       (applicable-methods method-order-test-methods '(t t)))))
+
+(test method-order-generic-function-precedence-order
+  "Test method ordering by generic function argument precedence order"
+
+  (is (equal '(2 0 1)
+	     (precedence-order '(a b c &optional d e) '(c a b))))
 
   ;; Test ORDER-BY-PRECEDENCE function
 
-  (is (order-by-precedence '(2 0 1) '(x (+ a b) 1 "optional arg")) '(1 x (+ a b)))
+  (is (equal '(1 x (+ a b))
+	     (order-by-precedence '(2 0 1) '(x (+ a b) 1 "optional arg"))))
 
   ;; Test ORDER-METHOD-SPECIALIZERS function
 
-  (is (order-method-specializers
+  (is (equal
        (mapcar
 	#'list
-	'((nil (number t character))
-	  (:before (integer t t))
+	'((nil (character number t))
+	  (:before (t integer t))
 	  (nil (t t t))))
-       '(2 0 1))
-      (mapcar
-       #'list
-       '((nil (character number t))
-	 (:before (t integer t))
-	 (nil (t t t))))))
+
+       (order-method-specializers
+	(mapcar
+	 #'list
+	 '((nil (number t character))
+	   (:before (integer t t))
+	   (nil (t t t))))
+	'(2 0 1)))))
+
+
+;;; Test Method Inlining
 
 (defvar *gensym-map*)
 
-(defun form= (got expected)
+(defun form= (expected got)
   "Returns true if the form GOT is equivalent to EXPECTED. If EXPECTED
    is a symbol beginning with $, it represents a GENSYM'd
    symbol. Further occurrences of EXPECTED will be compared to the
@@ -406,8 +549,8 @@
 
   (match* (got expected)
     (((cons gh gt) (cons eh et))
-     (and (form= gh eh)
-	  (form= gt et)))
+     (and (form= eh gh)
+	  (form= et gt)))
 
     (((type symbol) (type symbol))
      (if (starts-with #\$ (symbol-name expected))
@@ -416,190 +559,212 @@
 
     ((_ _) (equal got expected))))
 
-(defmacro is-form (got expected &rest args)
+(defmacro is-form (expected got &rest args)
   `(let ((*gensym-map* (make-hash-table :test #'eq)))
-     (is ,got ,expected :test #'form= ,@args)))
+     (is (form= ,expected ,got) ,@args)))
 
+(define-symbol-macro method-inlining-method1
+    (make-instance 'method-info
+		   :body '((= a b))
+		   :lambda-list '(a b &optional c)
+		   :qualifier nil
+		   :specializers '(number number)))
 
-(subtest "Method inlining"
-  ;; Test the BLOCK-NAME function
+(define-symbol-macro method-inlining-method2
+    (make-instance 'method-info
+		   :body '((eq x y))
+		   :lambda-list '(x y &optional c)
+		   :qualifier nil
+		   :specializers '(t t)))
 
-  (is (block-name 'equal?) 'equal?)
-  (is (block-name '(setf field)) 'field)
+(define-symbol-macro method-inlining-method3
+    (make-instance 'method-info
+		   :body '((pprint n1)
+			   (pprint n2))
+		   :lambda-list '(n1 n2 &optional z)
+		   :qualifier :before
+		   :specializers '(number t)))
 
-  ;; Test the output of the INLINE-METHODS function
-
+(def-fixture inlining-equal? ()
   (let ((*check-types*)
-	(*current-gf* 'equal?)
-	(method1 (make-instance 'method-info
-				:body '((= a b))
-				:lambda-list '(a b &optional c)
-				:qualifier nil
-				:specializers '(number number)))
-	(method2 (make-instance 'method-info
-				:body '((eq x y))
-				:lambda-list '(x y &optional c)
-				:qualifier nil
-				:specializers '(t t)))
-
-	(method3 (make-instance 'method-info
-				:body '((pprint n1)
-					(pprint n2))
-				:lambda-list '(n1 n2 &optional z)
-				:qualifier :before
-				:specializers '(number t))))
-
+	(*current-gf* 'equal?))
     (declare (special *check-types*))
+    (&body)))
 
-    (subtest "One Next Method"
-      (is-form
-       (inline-methods (list method1 method2) '((+ u v) 3) nil '(integer integer))
-       `(flet ((call-next-method (&rest $args1)
-		 (let (($next1 (or $args1 (list (+ u v) 3))))
-		   (declare (ignorable $next1))
-		   (flet ((call-next-method (&rest $args2)
-			    (let (($next2 (or $args2 $next1)))
-			      (declare (ignorable $next2))
-			      (apply #'no-next-method 'equal? nil $next2)))
+(test method-inline-block-name
+  "Test BLOCK-NAME function"
 
-			  (next-method-p () nil))
+  (is (equal 'equal? (block-name 'equal?)))
+  (is (equal 'field (block-name '(setf field)))))
 
-		     (declare (ignorable #'call-next-method #'next-method-p))
+;; Test the output of the INLINE-METHODS function
 
-		     (block equal?
-		       (destructuring-bind (x y &optional c) $next1
-			 (declare (ignorable x y))
-			 (eq x y))))))
+(test (method-inline-one-next-method :fixture inlining-equal?)
+  "Test method inlining with one next method"
 
-	       (next-method-p () t))
-	  (declare (ignorable #'call-next-method #'next-method-p))
+  (is-form
+   '(flet ((call-next-method (&rest $args1)
+	    (let (($next1 (or $args1 (list (+ u v) 3))))
+	      (declare (ignorable $next1))
+	      (flet ((call-next-method (&rest $args2)
+		       (let (($next2 (or $args2 $next1)))
+			 (declare (ignorable $next2))
+			 (apply #'no-next-method 'equal? nil $next2)))
 
-	  (block equal?
-	    (destructuring-bind (a b &optional c) (list (+ u v) 3)
-	      (declare (ignorable a b))
-	      (declare (type integer a) (type integer b))
+		     (next-method-p () nil))
 
-	      (= a b))))))
+		(declare (ignorable #'call-next-method #'next-method-p))
 
-    (subtest "No Next Methods"
-      (is-form
-       (inline-methods (list method2) '(y z) t)
-       `(flet ((call-next-method (&rest $args)
-		 (let (($next (or $args (list y z))))
-		   (declare (ignorable $next))
-		   (apply #'no-next-method 'equal? nil $next)))
+		(block equal?
+		  (destructuring-bind (x y &optional c) $next1
+		    (declare (ignorable x y))
+		    (eq x y))))))
 
-	       (next-method-p () nil))
-	  (declare (ignorable #'call-next-method #'next-method-p))
+	   (next-method-p () t))
+     (declare (ignorable #'call-next-method #'next-method-p))
 
-	  (block equal?
-	    (destructuring-bind (x y &optional c) (list y z)
-	      (declare (ignorable x y))
-	      (check-type x t)
-	      (check-type y t)
+     (block equal?
+       (destructuring-bind (a b &optional c) (list (+ u v) 3)
+	 (declare (ignorable a b))
+	 (declare (type integer a) (type integer b))
 
-	      (eq x y))))))
+	 (= a b))))
 
-    (subtest "With Type Checks"
-      (is-form
-       (inline-methods (list method1 method2) '((+ u v) 3) t '(number number))
+   (inline-methods (list method-inlining-method1 method-inlining-method2)
+		   '((+ u v) 3) nil '(integer integer))))
 
-       `(flet ((call-next-method (&rest $args1)
-		 (let (($next1 (or $args1 (list (+ u v) 3))))
-		   (declare (ignorable $next1))
-		   (flet ((call-next-method (&rest $args2)
-			    (let (($next2 (or $args2 $next1)))
-			      (declare (ignorable $next2))
-			      (apply #'no-next-method 'equal? nil $next2)))
+(test (method-inline-no-next-methods :fixture inlining-equal?)
+  "Test method inlining with no next methods"
 
-			  (next-method-p () nil))
+  (is-form
+   '(flet ((call-next-method (&rest $args)
+	    (let (($next (or $args (list y z))))
+	      (declare (ignorable $next))
+	      (apply #'no-next-method 'equal? nil $next)))
 
-		     (declare (ignorable #'call-next-method #'next-method-p))
+	   (next-method-p () nil))
+     (declare (ignorable #'call-next-method #'next-method-p))
 
-		     (block equal?
-		       (destructuring-bind (x y &optional c) $next1
-			 (declare (ignorable x y))
-			 (check-type x t)
-			 (check-type y t)
-			 (eq x y))))))
+     (block equal?
+       (destructuring-bind (x y &optional c) (list y z)
+	 (declare (ignorable x y))
+	 (check-type x t)
+	 (check-type y t)
 
-	       (next-method-p () t))
+	 (eq x y))))
 
-	  (declare (ignorable #'call-next-method #'next-method-p))
+   (inline-methods (list method-inlining-method2) '(y z) t)))
 
-	  (block equal?
-	    (destructuring-bind (a b &optional c) (list (+ u v) 3)
-	      (declare (ignorable a b))
-	      (declare (type number a) (type number b))
+(test (method-inline-with-type-checks :fixture inlining-equal?)
+  "Test method inlining with type checks"
 
-	      (= a b))))))
+  (is-form
+   '(flet ((call-next-method (&rest $args1)
+	    (let (($next1 (or $args1 (list (+ u v) 3))))
+	      (declare (ignorable $next1))
+	      (flet ((call-next-method (&rest $args2)
+		       (let (($next2 (or $args2 $next1)))
+			 (declare (ignorable $next2))
+			 (apply #'no-next-method 'equal? nil $next2)))
 
-    (subtest "With :BEFORE Method"
-      (is-form
-       (inline-methods (list method3 method1 method2) '((f x) (* z 4)) nil '(fixnum integer))
+		     (next-method-p () nil))
 
-       `(progn
-	  (flet ((call-next-method (&rest $args1)
-		  (declare (ignore $args1))
-		  (error 'illegal-call-next-method-error :method-type :before))
+		(declare (ignorable #'call-next-method #'next-method-p))
 
-		(next-method-p () nil))
-	   (declare (ignorable #'call-next-method #'next-method-p))
+		(block equal?
+		  (destructuring-bind (x y &optional c) $next1
+		    (declare (ignorable x y))
+		    (check-type x t)
+		    (check-type y t)
+		    (eq x y))))))
 
-	   (block equal?
-	     (destructuring-bind (n1 n2 &optional z) (list (f x) (* z 4))
-	       (declare (ignorable n1 n2))
-	       (declare (type fixnum n1) (type integer n2))
-	       (pprint n1)
-	       (pprint n2))))
+	   (next-method-p () t))
 
-	  (flet ((call-next-method (&rest $args2)
-		   (let (($next2 (or $args2 (list (f x) (* z 4)))))
-		     (declare (ignorable $next2))
-		     (flet ((call-next-method (&rest $args3)
-			      (let (($next3 (or $args3 $next2)))
-				(declare (ignorable $next3))
-				(apply #'no-next-method 'equal? nil $next3)))
+     (declare (ignorable #'call-next-method #'next-method-p))
 
-			    (next-method-p () nil))
+     (block equal?
+       (destructuring-bind (a b &optional c) (list (+ u v) 3)
+	 (declare (ignorable a b))
+	 (declare (type number a) (type number b))
 
-		       (declare (ignorable #'call-next-method #'next-method-p))
+	 (= a b))))
 
-		       (block equal?
-			 (destructuring-bind (x y &optional c) $next2
-			   (declare (ignorable x y))
-			   (eq x y))))))
+   (inline-methods (list method-inlining-method1 method-inlining-method2)
+		   '((+ u v) 3) t '(number number))))
 
-		 (next-method-p () t))
+(test (method-inline-with-before-method :fixture inlining-equal?)
+  "Test method inlining with :BEFORE method"
 
-	    (declare (ignorable #'call-next-method #'next-method-p))
+  (is-form
+   '(progn
+     (flet ((call-next-method (&rest $args1)
+	      (declare (ignore $args1))
+	      (error 'illegal-call-next-method-error :method-type :before))
 
-	    (block equal?
-	      (destructuring-bind (a b &optional c) (list (f x) (* z 4))
-		(declare (ignorable a b))
-		(declare (type fixnum a) (type integer b))
+	    (next-method-p () nil))
+       (declare (ignorable #'call-next-method #'next-method-p))
 
-		(= a b)))))))
+       (block equal?
+	 (destructuring-bind (n1 n2 &optional z) (list (f x) (* z 4))
+	   (declare (ignorable n1 n2))
+	   (declare (type fixnum n1) (type integer n2))
+	   (pprint n1)
+	   (pprint n2))))
 
-    ;; ;; Test SETF methods
+     (flet ((call-next-method (&rest $args2)
+	      (let (($next2 (or $args2 (list (f x) (* z 4)))))
+		(declare (ignorable $next2))
+		(flet ((call-next-method (&rest $args3)
+			 (let (($next3 (or $args3 $next2)))
+			   (declare (ignorable $next3))
+			   (apply #'no-next-method 'equal? nil $next3)))
 
-    (subtest "SETF Method"
-      (let ((*current-gf* '(setf field)))
-	(is-form
-	 (inline-methods (list method2) '(a b) nil '(t t))
-	 `(flet ((call-next-method (&rest $args)
-		   (let (($next (or $args (list a b))))
-		     (declare (ignorable $next))
-		     (apply #'no-next-method '(setf field) nil $next)))
+		       (next-method-p () nil))
 
-		 (next-method-p () nil))
+		  (declare (ignorable #'call-next-method #'next-method-p))
 
-	    (declare (ignorable #'call-next-method #'next-method-p))
+		  (block equal?
+		    (destructuring-bind (x y &optional c) $next2
+		      (declare (ignorable x y))
+		      (eq x y))))))
 
-	    (block field
-	      (destructuring-bind (x y &optional c) (list a b)
-		(declare (ignorable x y))
-		(declare (type t x) (type t y))
-		(eq x y)))))))))
+	    (next-method-p () t))
 
-(finalize)
+       (declare (ignorable #'call-next-method #'next-method-p))
+
+       (block equal?
+	 (destructuring-bind (a b &optional c) (list (f x) (* z 4))
+	   (declare (ignorable a b))
+	   (declare (type fixnum a) (type integer b))
+
+	   (= a b)))))
+
+   (inline-methods (list method-inlining-method3
+			 method-inlining-method1
+			 method-inlining-method2)
+
+		   '((f x) (* z 4)) nil '(fixnum integer))))
+
+;; ;; Test SETF methods
+
+(test (method-inline-setf-method :fixture inlining-equal?)
+  "Test inlining of SETF method"
+
+  (let ((*current-gf* '(setf field)))
+    (is-form
+     '(flet ((call-next-method (&rest $args)
+	      (let (($next (or $args (list a b))))
+		(declare (ignorable $next))
+		(apply #'no-next-method '(setf field) nil $next)))
+
+	     (next-method-p () nil))
+
+       (declare (ignorable #'call-next-method #'next-method-p))
+
+       (block field
+	 (destructuring-bind (x y &optional c) (list a b)
+	   (declare (ignorable x y))
+	   (declare (type t x) (type t y))
+	   (eq x y))))
+
+     (inline-methods (list method-inlining-method2) '(a b) nil '(t t)))))

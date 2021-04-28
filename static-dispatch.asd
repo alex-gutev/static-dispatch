@@ -53,16 +53,16 @@
   :description "Tests for static-dispatch."
   :author "Alexander Gutev"
   :license "MIT"
-  :depends-on (:static-dispatch :cl-interpol :prove :prove-asdf)
-  :defsystem-depends-on (:prove-asdf)
+  :depends-on (:static-dispatch :cl-interpol :fiveam)
   :components ((:module
 		"test"
 		:components
-		((:file "util")
-		 (:test-file "internals")
-		 (:test-file "dispatch")
-		 (:test-file "next-methods")
-		 (:test-file "aux")
-		 (:test-file "compiler-macro"))))
-  :perform (asdf:test-op :after (op c)
-			 (funcall (intern #.(string :run) :prove) c :reporter :fiveam)))
+		((:file "test")
+		 (:file "internals")
+		 (:file "dispatch")
+		 (:file "next-methods")
+		 (:file "aux")
+		 (:file "compiler-macro"))))
+
+  :perform (asdf:test-op (op c)
+			 (uiop:symbol-call :static-dispatch/test :test-static-dispatch)))

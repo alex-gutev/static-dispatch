@@ -47,16 +47,28 @@
 ;;;;  case generic functions fallback to the standard dynamic
 ;;;;  dispatch.
 
-(defpackage :static-dispatch-test-compiler-macro
+(defpackage :static-dispatch/test.compiler-macro
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
 	:trivia
 
-	:prove
-	:static-dispatch-test-util))
+	:fiveam
+	:static-dispatch/test))
 
-(in-package :static-dispatch-test-compiler-macro)
+(in-package :static-dispatch/test.compiler-macro)
+
+
+;;; Test suite definition
+
+(def-suite compiler-macros
+    :description "Test interaction between static dispatch and other compiler-macros."
+    :in static-dispatch)
+
+(in-suite compiler-macros)
+
+
+;;; Definitions used by tests
 
 ;;; The following generic function has a compiler macro which simply
 ;;; returns the form as is. The purpose of this test is to ensure that
@@ -84,19 +96,17 @@
 
 (defconstant +a-constant+ 10)
 
-
+
 ;;; Tests
 
-(plan nil)
+(test compiler-macro-interaction
+  "Test interaction with other compiler macros"
 
-(subtest "Interaction with Other Compiler Macros"
-  (isnt (compiler-macro-function 'f) #'static-dispatch
-	"Compiler-Macro-Function of F not replaced by STATIC-DISPATCH")
+  (is (not (eq #'static-dispatch (compiler-macro-function 'f)))
+      "Compiler-macro-function of F replaced by STATIC-DISPATCH")
 
   ;; Test that the function is not statically dispatched, since it's
   ;; existing compiler macro is not replaced.
   (locally (declare (inline f))
     (test-dispatch (f 1) 1 :static-p nil)
     (test-dispatch (f 'x) nil :static-p nil)))
-
-(finalize)

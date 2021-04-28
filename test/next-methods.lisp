@@ -46,17 +46,28 @@
 ;;;;  case generic functions fallback to the standard dynamic
 ;;;;  dispatch.
 
-(defpackage :static-dispatch-test-next-methods
+(defpackage :static-dispatch/test.next-methods
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
 	:trivia
 
-	:prove
-	:static-dispatch-test-util))
+	:fiveam
+	:static-dispatch/test))
 
-(in-package :static-dispatch-test-next-methods)
+(in-package :static-dispatch/test.next-methods)
 
+
+;;; Test suite definition
+
+(def-suite next-methods
+    :description "Test CALL-NEXT-METHOD in static dispatching."
+    :in static-dispatch)
+
+(in-suite next-methods)
+
+
+;;; Definitions used by tests
 
 ;;; Generic function methods which make use of CALL-NEXT-METHOD and
 ;;; NEXT-METHOD-P
@@ -82,6 +93,8 @@
   (list 'other (next-method-p)
 	(list a b)))
 
+;; Currently not used as NO-NEXT-METHOD is not implemented
+;; consistently across implementations.
 
 ;; Test functions for tests which check that NO-NEXT-METHOD tests is
 ;; called
@@ -107,108 +120,114 @@
 
 (defconstant +a-constant+ 10)
 
-
-;;; Tests
-
 ;; Enable static dispatch
 (enable-static-dispatch foo)
 
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
-(plan nil)
+
+;;; Tests
 
-(subtest "Test CALL-NEXT-METHOD and NEXT-METHOD-P"
-  (subtest "Integer Arguments"
-    (let ((x-int 5) (y-int 10))
-      (declare (type integer x-int y-int)
-	       (optimize speed)
-	       (inline foo))
+(test dispatch-integer-arguments
+  "Test CALL-NEXT-METHOD with arguments"
 
-      (test-dispatch
-       (foo 1 2)
-       '(integer t (number t (2 3))))
+  (let ((x-int 5) (y-int 10))
+    (declare (type integer x-int y-int)
+	     (optimize speed)
+	     (inline foo))
 
-      (test-dispatch
-       (foo x-int y-int)
-       '(integer t (number t (6 11))))
+    (test-dispatch
+     (foo 1 2)
+     '(integer t (number t (2 3))))
 
-      (test-dispatch
-       (foo a-number +a-constant+)
-       '(integer t (number t (3 11))))))
+    (test-dispatch
+     (foo x-int y-int)
+     '(integer t (number t (6 11))))
 
-  (subtest "Float Arguments"
-    (let ((x 0.5) (y 2.5))
-      (declare (type float x y)
-	       (optimize speed)
-	       (inline foo))
+    (test-dispatch
+     (foo a-number +a-constant+)
+     '(integer t (number t (3 11))))))
 
-      (test-dispatch
-       (foo (pass-through 1.5) 3.125)
-       '(float t (number t (1.5 3.125))))
+(test dispatch-float-arguments
+  "Test CALL-NEXT-METHOD without arguments"
 
-      (test-dispatch
-       (foo x y)
-       '(float t (number t (0.5 2.5))))))
+  (let ((x 0.5) (y 2.5))
+    (declare (type float x y)
+	     (optimize speed)
+	     (inline foo))
 
-  (subtest "Number Arguments"
-    (let ((x 1) (y 3/2))
-      (declare (type integer x)
-	       (type number y)
-	       (optimize speed)
-	       (inline foo))
+    (test-dispatch
+     (foo (pass-through 1.5) 3.125)
+     '(float t (number t (1.5 3.125))))
 
-      (test-dispatch
-       (foo 1 5/6)
-       '(number t (1 5/6)))
+    (test-dispatch
+     (foo x y)
+     '(float t (number t (0.5 2.5))))))
 
-      (test-dispatch
-       (foo x y)
-       '(number t (1 3/2)))))
+(test dispatch-number-arguments
+  "Test NEXT-METHOD-P with next method"
 
-  (subtest "String Arguments"
-    (let ((hello "hello"))
-      (declare (type string hello)
-	       (optimize speed)
-	       (inline foo))
+  (let ((x 1) (y 3/2))
+    (declare (type integer x)
+	     (type number y)
+	     (optimize speed)
+	     (inline foo))
 
-      (test-dispatch
-       (foo hello "world")
-       '(string t ("hello" "world")))
+    (test-dispatch
+     (foo 1 5/6)
+     '(number t (1 5/6)))
 
-      (test-dispatch
-       (foo (pass-through "hello") "bye")
-       '(string t ("hello" "bye")))))
+    (test-dispatch
+     (foo x y)
+     '(number t (1 3/2)))))
 
-  (subtest "Other Arguments"
-    (locally (declare (inline foo)
-		      (optimize speed))
+(test dispatch-string-arguments
+  "Test NEXT-METHOD-P with next method."
 
-      (test-dispatch (foo 'x 0) '(other nil (x 0)))
-      (test-dispatch (foo (pass-through "hello") +a-constant+)
-		     (list 'other nil (list "hello" +a-constant+)))))
+  (let ((hello "hello"))
+    (declare (type string hello)
+	     (optimize speed)
+	     (inline foo))
 
-  ;; These tests have been disabled because NO-NEXT-METHOD does not
-  ;; seem to be supported on all implementations, ABCL and ECL do not
-  ;; call NO-NEXT-METHOD but simply emit an error.
-  ;;
-  ;; Furthermore on the implementations which do support it, CCL and
-  ;; SBCL, it is not called with the arguments which are actually
-  ;; passed to CALL-NEXT-METHOD, despite that being clearly stated in
-  ;; the standard, but the arguments originally passed to the method.
-  ;;
-  ;; Due to the inconsistent behaviour across implementations, these
-  ;; tests have been disabled
+    (test-dispatch
+     (foo hello "world")
+     '(string t ("hello" "world")))
 
-  ;; (subtest "No Next Method"
-  ;;   (locally (declare (inline bar) (optimize speed))
-  ;;     (test-dispatch
-  ;;      (bar 1 2)
-  ;;      '(number (no-next-method bar (2 3))))
+    (test-dispatch
+     (foo (pass-through "hello") "bye")
+     '(string t ("hello" "bye")))))
 
-  ;;     (test-dispatch
-  ;;      (bar "abc" "def")
-  ;;      '(string (no-next-method bar ("abc" "def"))))))
-  )
+(test dispatch-other-arguments
+  "Test NEXT-METHOD-P with no next method"
 
-(finalize)
+  (locally (declare (inline foo)
+		    (optimize speed))
+
+    (test-dispatch (foo 'x 0) '(other nil (x 0)))
+    (test-dispatch (foo (pass-through "hello") +a-constant+)
+		   (list 'other nil (list "hello" +a-constant+)))))
+
+;; These tests have been disabled because NO-NEXT-METHOD does not
+;; seem to be supported on all implementations, ABCL and ECL do not
+;; call NO-NEXT-METHOD but simply emit an error.
+;;
+;; Furthermore on the implementations which do support it, CCL and
+;; SBCL, it is not called with the arguments which are actually
+;; passed to CALL-NEXT-METHOD, despite that being clearly stated in
+;; the standard, but the arguments originally passed to the method.
+;;
+;; Due to the inconsistent behaviour across implementations, these
+;; tests have been disabled
+
+;; (test no-next-method
+;;   "Test that NO-NEXT-METHOD is called when no next method"
+
+;;   (locally (declare (inline bar) (optimize speed))
+;;     (test-dispatch
+;;      (bar 1 2)
+;;      '(number (no-next-method bar (2 3))))
+
+;;     (test-dispatch
+;;      (bar "abc" "def")
+;;      '(string (no-next-method bar ("abc" "def"))))))
