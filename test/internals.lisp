@@ -29,13 +29,17 @@
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
-	:trivia
+	:optima
 
 	:static-dispatch/test
 	:fiveam)
 
+  (:shadowing-import-from :fiveam :fail)
+
   (:import-from
    :static-dispatch
+   :match*
+
    :parse-method
 
    :*generic-function-table*
@@ -145,7 +149,7 @@
 (test defmethod-unsupported-qualifier-error
   "Test error signalled when parsing unsupported qualifier"
 
-  (signals trivia:match-error
+  (signals optima:match-error
     (parse-method '(and (a (b number) (c character)) (pprint c) (+ a b)))))
 
 

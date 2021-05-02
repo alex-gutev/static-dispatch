@@ -52,7 +52,6 @@
   (:use :static-dispatch-cl
 	:alexandria
 	:arrows
-	:trivia
 
 	:fiveam
 	:static-dispatch/test))

@@ -33,6 +33,7 @@
 		"src"
 		:components
 		((:file "package")
+		 (:file "util")
 		 (:file "common")
 		 (:file "default" :if-feature (:not :sbcl))
 		 (:file "sbcl" :if-feature :sbcl))))
@@ -41,7 +42,7 @@
 	       :anaphora
 	       :arrows
 	       :iterate
-	       :trivia
+	       :optima
 	       :closer-mop
 
 	       :agutil

@@ -1,6 +1,6 @@
-;;;; package.lisp
+;;;; util.lisp
 ;;;;
-;;;; Copyright 2018-2019 Alexander Gutev
+;;;; Copyright 2021 Alexander Gutev
 ;;;;
 ;;;; Permission is hereby granted, free of charge, to any person
 ;;;; obtaining a copy of this software and associated documentation
@@ -23,33 +23,18 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-(agutil:define-merged-package :closer-environments
-    :cl-environments
-  :closer-mop)
+(in-package #:static-dispatch)
 
-(defpackage #:static-dispatch
-  (:use :alexandria
-	:anaphora
-	:arrows
-	:optima
-	:iterate
+(defmacro lambda-match (&body clauses)
+  (with-gensyms (args)
+    `(lambda (,args)
+       (match ,args
+	 ,@clauses))))
 
-	:agutil
-	:closer-environments
-	:cl-environments.tools)
+(defmacro match* ((&rest things) &body clauses)
+  `(multiple-value-match (values ,@things)
+     ,@clauses))
 
-  (:shadow :defmethod
-	   :defgeneric)
-
-  (:export :defmethod
-	   :defgeneric
-
-	   :enable-static-dispatch
-	   :static-dispatch
-
-	   :illegal-call-next-method-error
-	   :no-primary-method-error))
-
-(agutil:define-merged-package :static-dispatch-cl
-    :closer-environments
-  :static-dispatch)
+(defmacro ematch* ((&rest things) &body clauses)
+  `(multiple-value-ematch (values ,@things)
+     ,@clauses))
