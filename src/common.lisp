@@ -211,12 +211,22 @@
    REMOVE-ON-REDEFINE-P is a flag for whether the method should be
    removed when the generic function is redefined."
 
-  (flet ((make-specializer (specializer)
+  (flet (#-clisp
+	 (make-specializer (specializer)
 	   (match specializer
 	     ((list 'eql value)
 	      ``(eql ,,value))
 
-	     (_ `',specializer))))
+	     (_ `',specializer)))
+
+	 #+clisp
+	 (make-specializer (specializer)
+	   (match specializer
+	     ((list 'eql value)
+	      `(intern-eql-specializer ,value))
+
+	     (_
+	      `(find-class ',specializer nil)))))
 
     (with-gensyms (method)
       `(let ((,method (find-method
