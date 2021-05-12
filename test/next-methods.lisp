@@ -46,14 +46,6 @@
 ;;;;  case generic functions fallback to the standard dynamic
 ;;;;  dispatch.
 
-(defpackage :static-dispatch/test.next-methods
-  (:use :static-dispatch-cl
-	:alexandria
-	:arrows
-
-	:fiveam
-	:static-dispatch/test))
-
 (in-package :static-dispatch/test.next-methods)
 
 
@@ -66,67 +58,13 @@
 (in-suite next-methods)
 
 
-;;; Definitions used by tests
-
-;;; Generic function methods which make use of CALL-NEXT-METHOD and
-;;; NEXT-METHOD-P
-
-(defgeneric foo (a b))
-
-(defmethod foo ((a number) (b number))
-  (list 'number (next-method-p) (list a b)))
-
-(defmethod foo ((a integer) (b integer))
-  (list 'integer (next-method-p)
-	(call-next-method (1+ a) (1+ b))))
-
-(defmethod foo ((a float) (b float))
-  (list 'float (next-method-p)
-	(call-next-method)))
-
-(defmethod foo ((a string) (b string))
-  (list 'string (next-method-p)
-	(list a b)))
-
-(defmethod foo (a b)
-  (list 'other (next-method-p)
-	(list a b)))
-
-;; Currently not used as NO-NEXT-METHOD is not implemented
-;; consistently across implementations.
-
-;; Test functions for tests which check that NO-NEXT-METHOD tests is
-;; called
-
-;; (defgeneric bar (x y)
-;;   (:method ((x number) (y number))
-;;     (list 'number (call-next-method (1+ x) (1+ y))))
-
-;;   (:method ((x string) (y string))
-;;     (list 'string (call-next-method))))
-
-;; (defmethod no-next-method ((gf (eql (fdefinition 'bar))) method &rest args)
-;;   (declare (ignore method))
-;;   (list 'no-next-method 'bar args))
-
-;;; Macros
-
-(defmacro pass-through (form)
-  "Expands to FORM unchanged."
-  form)
-
-(define-symbol-macro a-number 2)
-
-(defconstant +a-constant+ 10)
+;;; Tests
 
 ;; Enable static dispatch
 (enable-static-dispatch foo)
 
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
-
-
-;;; Tests
 
 (test dispatch-integer-arguments
   "Test CALL-NEXT-METHOD with arguments"

@@ -75,6 +75,17 @@
 (in-suite internals)
 
 
+;;; Utilities
+
+(defun eval-method (method)
+  "Evaluate a method definition form while hiding errors and
+   warnings."
+
+  (ignore-errors
+    (handler-bind ((warning #'muffle-warning))
+      (eval method))))
+
+
 ;;; Test DEFMETHOD parsing
 
 (defmacro test-parse (expected method-form)
@@ -195,7 +206,7 @@
 (test (defmethod-specialized-method :fixture method-table)
   "Test DEFMETHOD with specialized arguments"
 
-  (macroexpand equal?-method1)
+  (eval-method equal?-method1)
 
   ;; Check that a method table was created for EQUAL?
   (is-true (gf-methods 'equal?)
@@ -220,10 +231,10 @@
   "test DEFMETHOD without specialized arguments"
 
   ;; Expand previous methods
-  (macroexpand equal?-method1)
+  (eval-method equal?-method1)
 
   ;; Expand this method
-  (macroexpand equal?-method2)
+  (eval-method equal?-method2)
 
   ;; Check that the (NUMBER NUMBER) method is still in the method
   ;; table
@@ -251,12 +262,12 @@
   "Test DEFMETHOD with EQL specializers"
 
   ;; Expand previous methods
-  (macroexpand equal?-method1)
-  (macroexpand equal?-method2)
+  (eval-method equal?-method1)
+  (eval-method equal?-method2)
 
   ;; Evaluate DEFMETHOD form to actually create the method and add
   ;; a method for (EQL ALL) to the generic function table
-  (eval equal?-method3)
+  (eval-method equal?-method3)
 
   (let ((method-info (gf-method 'equal? '(nil ((eql all) t)))))
     ;; Check that the method was added to the method table for
@@ -280,12 +291,12 @@
   "Test DEFMETHOD with :BEFORE qualifier"
 
   ;; Expand previous methods
-  (eval equal?-method1)
-  (eval equal?-method2)
-  (eval equal?-method3)
+  (eval-method equal?-method1)
+  (eval-method equal?-method2)
+  (eval-method equal?-method3)
 
   ;; Expand current method
-  (macroexpand equal?-method4)
+  (eval-method equal?-method4)
 
   ;; Check that previous methods still in method table
   (is (typep (gf-method 'equal? '(nil (number number))) 'method-info)
@@ -294,7 +305,7 @@
   (is (typep (gf-method 'equal? '(nil (t t))) 'method-info)
       "Method for (NIL (T T)) no longer in method table")
 
-  (is (typep (gf-method 'equal? '(nil ((eql 'all) t))) 'method-info)
+  (is (typep (gf-method 'equal? '(nil ((eql all) t))) 'method-info)
       "Method for (NIL (EQL ALL) T) no longer in method table.")
 
   (let ((method-info (gf-method 'equal? '(:before (integer t)))))
@@ -317,12 +328,12 @@
   "Test DEFMETHOD with unsupported qualifier"
 
   ;; Expand previous methods
-  (eval equal?-method1)
-  (eval equal?-method2)
-  (eval equal?-method3)
-  (eval equal?-method4)
+  (eval-method equal?-method1)
+  (eval-method equal?-method2)
+  (eval-method equal?-method3)
+  (eval-method equal?-method4)
 
-  (macroexpand equal?-method5)
+  (eval-method equal?-method5)
 
   ;; Check that the method table for equal? was removed as
   ;; method combinations are not supported.
@@ -333,7 +344,7 @@
   ;; Check that even if a new method with no qualifiers is defined,
   ;; the method table will not be recreated.
 
-  (macroexpand '(static-dispatch:defmethod equal? (x y)
+  (eval-method '(static-dispatch:defmethod equal? (x y)
 		 (pprint x)
 		 (pprint y)))
 

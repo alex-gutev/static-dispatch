@@ -53,14 +53,6 @@
 ;;;;  hence these conditions are not raised but the builtin CLOS
 ;;;;  conditions are raised.
 
-(defpackage :static-dispatch/test.aux
-  (:use :static-dispatch-cl
-	:alexandria
-	:arrows
-
-	:fiveam
-	:static-dispatch/test))
-
 (in-package :static-dispatch/test.aux)
 
 (named-readtables:in-readtable :interpol-syntax)
@@ -75,92 +67,13 @@
 (in-suite auxiliary-methods)
 
 
-;;; Definitions used by tests
+;;; Tests
 
 ;;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
-;;; Generic Function with Auxiliary Methods
-
-(defgeneric my-eq (a b))
-
-(defmethod my-eq ((a number) (b number))
-  (= a b))
-
-(defmethod my-eq (a b)
-  (eq a b))
-
-
-(defmethod my-eq :before ((a number) (b number))
-  (format t "Before Numbers: ~a = ~a~%" a b))
-
-(defmethod my-eq :before ((a integer) (b integer))
-  (format t "Before Integer: ~a = ~a~%" a b))
-
-(defmethod my-eq :after ((a number) (b number))
-  (format t "After Numbers: ~a = ~a~%" a b))
-
-(defmethod my-eq :after ((a integer) (b integer))
-  (format t "After Integer: ~a = ~a~%" a b))
-
-(defmethod my-eq :around ((a number) (b number))
-  (list :around-number (call-next-method)))
-
-(defmethod my-eq :around ((a integer) (b integer))
-  (if (= a b 133)
-      :special-number
-      (list :around-integer (call-next-method a b))))
-
-
-;;; Generic Functions with no primary methods
-
-(defgeneric foo (x)
-  (:method :before (x)
-    (format t "FOO Before: ~x" x)))
-
-(defgeneric bar (x)
-  (:method :after ((x integer))
-     (format t "BAR After: ~x" x)))
-
-(defmethod bar :around ((x t))
-  (list 'around-bar (call-next-method)))
-
-
-;;; Generic Function with before and after methods that call
-;;; CALL-NEXT-METHOD:
-
-(defgeneric baz (x)
-  (:method (x) x))
-
-(defmethod baz :before (x)
-  (format t "BAZ Before all: ~a ~a~%" x (next-method-p)))
-
-(defmethod baz :before ((x integer))
-  (format t "BAZ Before INTEGER: ~a ~a~%" x (next-method-p))
-  (call-next-method))
-
-(defmethod baz :after ((x array))
-  (format t "BAZ After ARRAY: ~a ~a~%" x (next-method-p)))
-
-(defmethod baz :after ((x string))
-  (format t "BAZ After STRING: ~a ~a~%" x (next-method-p))
-  (call-next-method x))
-
-;;; Macros
-
-(defmacro pass-through (form)
-  "Expands to FORM unchanged."
-  form)
-
-(define-symbol-macro a-number 2)
-
-(defconstant +a-constant+ 10)
-
 ;; Enable static dispatch
 (enable-static-dispatch my-eq foo bar baz)
-
-
-;;; Tests
 
 (test around-methods
   "Test static dispatching of :AROUND methods"

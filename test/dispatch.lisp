@@ -48,14 +48,6 @@
 ;;;;  case generic functions fallback to the standard dynamic
 ;;;;  dispatch.
 
-(defpackage :static-dispatch/test.dispatch
-  (:use :static-dispatch-cl
-	:alexandria
-	:arrows
-
-	:fiveam
-	:static-dispatch/test))
-
 (in-package :static-dispatch/test.dispatch)
 
 
@@ -68,37 +60,13 @@
 (in-suite dispatch)
 
 
-;;; Definitions used by tests
-
-(defgeneric add (a b))
-
-(defmethod add ((a number) (b number))
-  (list 'number (+ a b)))
-
-(defmethod add ((a string) (b string))
-  (list 'string a b))
-
-(defmethod add (a b)
-  (list a b))
-
-;;; Macros
-
-(defmacro pass-through (form)
-  "Expands to FORM unchanged."
-  form)
-
-(define-symbol-macro a-number 2)
-
-(defconstant +a-constant+ 10)
+;;; Tests
 
 ;; Enable static dispatch
 (enable-static-dispatch add)
 
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
-
-
-;;; Tests
 
 (test dispatch-constant-arguments
   "Test static dispatching on constant arguments"

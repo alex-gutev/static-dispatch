@@ -60,8 +60,11 @@
 		:components
 		((:file "test")
 		 (:file "internals")
+		 (:file "dispatch-defs")
 		 (:file "dispatch")
+		 (:file "next-methods-defs")
 		 (:file "next-methods")
+		 (:file "aux-defs")
 		 (:file "aux")
 		 (:file "compiler-macro"))))
 
