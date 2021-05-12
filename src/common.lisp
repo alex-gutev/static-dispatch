@@ -143,60 +143,95 @@
 
   (setf (gethash gf-name *generic-function-table*) nil))
 
+(defun remove-defined-methods (name)
+  "Remove the methods of a generic-function for which REMOVE-ON-REDEFINE-P is true.
+
+   NAME is the name of the generic function."
+
+  (handler-case
+      (let ((methods (ensure-gf-methods name)))
+	(iter
+	  (for (key method) in-hashtable methods)
+	  (when (remove-on-redefine-p method)
+	    (remhash key methods))))
+
+    (not-supported ())))
+
 
 ;;; DEFMETHOD and DEFGENERIC Macros
 
 (defmacro defmethod (name &rest args)
-  `(walk-environment
-     ,(or
-       (handler-case
-	   (multiple-value-bind (qualifier specializers lambda-list body)
-	       (parse-method args)
+  `(progn
+     (walk-environment
+       (c2mop:defmethod ,name ,@args))
 
-	     (ensure-method-info name qualifier specializers :body body :lambda-list lambda-list)
+     ,(handler-case
+	  (multiple-value-bind (qualifier specializers lambda-list body)
+	      (parse-method args)
 
-	     (alet `(c2mop:defmethod ,name ,@args)
-	       (if (has-eql-specializer? specializers)
-		   `(aprog1 ,it
-		      (ensure-method-info
-		       ',name
-		       ',qualifier
-		       (mapcar #'specializer->cl (method-specializers it))
-		       :body ',body
-		       :lambda-list ',lambda-list))
-		   it)))
-	 (match-error () (mark-no-dispatch name))
-	 (not-supported ()))
+	    (declare (ignore lambda-list))
 
-       `(c2mop:defmethod ,name ,@args))))
+	    (make-add-method-info name qualifier specializers body))
+
+	  (match-error () `(mark-no-dispatch ',name))
+	  (not-supported () `(mark-no-dispatch ',name)))))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
-  (handler-case
-      (progn
-	(let ((methods (ensure-gf-methods name)))
-	  (iter
-	    (for (key method) in-hashtable methods)
-	    (when (remove-on-redefine-p method)
-	      (remhash key methods))))
+  `(progn
+     (walk-environment
+       (c2mop:defgeneric ,name ,lambda-list ,@options))
 
-	(mapc
-	 (lambda-match
-	   ((list* :method args)
-	    (multiple-value-bind (qualifier specializers lambda-list body)
-		(parse-method args)
+     (remove-defined-methods ',name)
 
-	      (ensure-method-info name
-				  qualifier
-				  specializers
-				  :body body
-				  :lambda-list lambda-list
-				  :remove-on-redefine-p t))))
-	 options))
-    (match-error () (mark-no-dispatch name))
-    (not-supported ()))
+     ,@(handler-case
+	  (mappend
+	   (lambda-match
+	     ((list* :method args)
+	      (multiple-value-bind (qualifier specializers lambda-list body)
+		  (parse-method args)
 
-  `(walk-environment
-     (c2mop:defgeneric ,name ,lambda-list ,@options)))
+		(declare (ignore lambda-list))
+
+		(list (make-add-method-info name qualifier specializers body :remove-on-redefine-p t)))))
+
+	   options)
+
+	(match-error () `((mark-no-dispatch ',name))))))
+
+(defun make-add-method-info (name qualifier specializers body &key remove-on-redefine-p)
+  "Create a form which adds the method information to the method table.
+
+   NAME is the name of the generic function.
+
+   QUALIFIER is the method qualifier.
+
+   SPECIALIZERS is the method's specializer list as it appears in the
+   DEFMETHOD form.
+
+   REMOVE-ON-REDEFINE-P is a flag for whether the method should be
+   removed when the generic function is redefined."
+
+  (flet ((make-specializer (specializer)
+	   (match specializer
+	     ((list 'eql value)
+	      ``(eql ,,value))
+
+	     (_ `',specializer))))
+
+    (with-gensyms (method)
+      `(let ((,method (find-method
+		       (fdefinition ',name)
+		       ',(ensure-list qualifier)
+		       (list ,@(mapcar #'make-specializer specializers))
+		       nil)))
+	 (when ,method
+	   (ensure-method-info
+	    ',name
+	    ',qualifier
+	    (mapcar #'specializer->cl (method-specializers ,method))
+	    :body ',body
+	    :lambda-list (method-lambda-list ,method)
+	    :remove-on-redefine-p ,remove-on-redefine-p))))))
 
 
 ;;; Parsing Method Definitions
