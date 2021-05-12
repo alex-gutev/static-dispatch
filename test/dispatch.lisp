@@ -68,7 +68,7 @@
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
-(test dispatch-constant-arguments
+(test (dispatch-constant-arguments :compile-at :run-time)
   "Test static dispatching on constant arguments"
 
   (locally (declare (optimize speed)
@@ -79,7 +79,7 @@
     (test-dispatch (add 'x 'y) '(x y) :test-dispatch nil)
     (test-dispatch (add +a-constant+ 1) '(number 11))))
 
-(test dispatch-typed-variables
+(test (dispatch-typed-variables :compile-at :run-time)
   "Test static dispatching on variables with TYPE declarations"
 
   (let ((x-int 1) (y-int 2) (z-int 3)
@@ -105,7 +105,7 @@
     (test-dispatch (add x 1) '(x 1) :test-dispatch nil)
     (test-dispatch (add x-int x-string) '(1 "hello") :test-dispatch nil)))
 
-(test dispatch-typed-functions
+(test (dispatch-typed-functions :compile-at :run-time)
   "Test static dispatching on functions with FTYPE declarations"
 
   (flet ((neg (x)
@@ -144,7 +144,7 @@
       (test-dispatch (add (neg 3) "x") '(-3 "x") :test-dispatch nil)
       (test-dispatch (add hello (neg 9)) '("hello" -9) :test-dispatch nil))))
 
-(test dispatch-the-forms
+(test (dispatch-the-forms :compile-at :run-time)
   "Test static dispatching on THE forms"
 
   (flet ((f (x) x))
@@ -171,7 +171,7 @@
 			  "world")
 		     '(string "hello" "world")))))
 
-(test dispatch-macros
+(test (dispatch-macros :compile-at :run-time)
   "Test static dispatching on macro forms"
 
   (macrolet
