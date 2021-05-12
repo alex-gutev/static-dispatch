@@ -66,7 +66,7 @@
      ,(when test-dispatch
 	`(,(if static-p 'is-true 'is-false)
 	   *static-dispatch*
-	   ,(format nil "~a ~a dispatched"
+	   ,(format nil "~a was not ~a dispatched"
 		    call
 		    (if static-p "statically" "dynamically"))))))
 
