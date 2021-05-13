@@ -90,7 +90,7 @@
 			 (remove-duplicates :key #'cadar :test #'equal)
 			 (mapcar #'cdr <>))))
       (unless methods
-	(warn "No methods found for generic function ~a" name))
+	(simple-style-warning "Could not enable static dispatch for: ~a. No methods found." name))
 
       `(progn
 	 (sb-c:defknown ,name * * () :overwrite-fndb-silently t)
