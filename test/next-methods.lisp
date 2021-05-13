@@ -66,7 +66,7 @@
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
-(test dispatch-integer-arguments
+(test (dispatch-integer-arguments :compile-at :run-time)
   "Test CALL-NEXT-METHOD with arguments"
 
   (let ((x-int 5) (y-int 10))
@@ -86,7 +86,7 @@
      (foo a-number +a-constant+)
      '(integer t (number t (3 11))))))
 
-(test dispatch-float-arguments
+(test (dispatch-float-arguments :compile-at :run-time)
   "Test CALL-NEXT-METHOD without arguments"
 
   (let ((x 0.5) (y 2.5))
@@ -102,7 +102,7 @@
      (foo x y)
      '(float t (number t (0.5 2.5))))))
 
-(test dispatch-number-arguments
+(test (dispatch-number-arguments :compile-at :run-time)
   "Test NEXT-METHOD-P with next method"
 
   (let ((x 1) (y 3/2))
@@ -119,7 +119,7 @@
      (foo x y)
      '(number t (1 3/2)))))
 
-(test dispatch-string-arguments
+(test (dispatch-string-arguments :compile-at :run-time)
   "Test NEXT-METHOD-P with next method."
 
   (let ((hello "hello"))
@@ -135,7 +135,7 @@
      (foo (pass-through "hello") "bye")
      '(string t ("hello" "bye")))))
 
-(test dispatch-other-arguments
+(test (dispatch-other-arguments :compile-at :run-time)
   "Test NEXT-METHOD-P with no next method"
 
   (locally (declare (inline foo)

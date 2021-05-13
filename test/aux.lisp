@@ -75,7 +75,7 @@
 ;; Enable static dispatch
 (enable-static-dispatch my-eq foo bar baz)
 
-(test around-methods
+(test (around-methods :compile-at :run-time)
   "Test static dispatching of :AROUND methods"
 
   (locally (declare (inline my-eq)
@@ -86,7 +86,7 @@
     (test-dispatch (my-eq "x" 'x) nil)
     (test-dispatch (my-eq 133 133) :special-number)))
 
-(test before-after-methods
+(test (before-after-methods :compile-at :run-time)
   "Test static dispatching of :BEFORE and :AFTER methods"
 
   (locally (declare (inline my-eq)
@@ -99,7 +99,7 @@
     ;; applicable.
     (is-print (my-eq 'x 'y) "")))
 
-(test before-method-without-primary
+(test (before-method-without-primary :compile-at :run-time)
   "Test static dispatching of :BEFORE method without primary method"
 
   (locally (declare (inline foo) (optimize speed))
@@ -110,7 +110,7 @@
 
     (test-error (foo 1) no-primary-method-error)))
 
-(test after-method-without-primary
+(test (after-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AFTER method without primary method"
 
   (locally (declare (inline bar) (optimize speed))
@@ -121,14 +121,14 @@
 
     (test-error (bar 5) no-primary-method-error)))
 
-(test around-method-without-primary
+(test (around-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AROUND method without primary method"
 
   (locally (declare (inline bar) (optimize speed))
     (test-error (bar "hello") no-primary-method-error)
     (test-error (bar 10) no-primary-method-error)))
 
-(test before-method-call-next-method
+(test (before-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :BEFORE method"
 
   (locally (declare (inline baz) (optimize speed))
@@ -142,7 +142,7 @@
 
     (test-error (baz 14) illegal-call-next-method-error)))
 
-(test after-method-call-next-method
+(test (after-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :AFTER method"
 
   (locally (declare (inline baz) (optimize speed))
