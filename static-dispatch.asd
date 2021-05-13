@@ -55,8 +55,10 @@
   :author "Alexander Gutev"
   :license "MIT"
   :depends-on (:static-dispatch :fiveam)
+  :serial t
   :components ((:module
 		"test"
+		:serial t
 		:components
 		((:file "test")
 		 (:file "internals")
