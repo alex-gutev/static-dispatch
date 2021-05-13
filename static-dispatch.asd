@@ -54,7 +54,7 @@
   :description "Tests for static-dispatch."
   :author "Alexander Gutev"
   :license "MIT"
-  :depends-on (:static-dispatch :cl-interpol :fiveam)
+  :depends-on (:static-dispatch :fiveam)
   :components ((:module
 		"test"
 		:components

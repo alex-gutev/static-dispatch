@@ -55,8 +55,6 @@
 
 (in-package :static-dispatch/test.aux)
 
-(named-readtables:in-readtable :interpol-syntax)
-
 
 ;;; Test suite definition
 
@@ -92,8 +90,8 @@
   (locally (declare (inline my-eq)
 		    (optimize speed))
 
-    (is-print (my-eq 1/2 2/3) #?"Before Numbers: 1/2 = 2/3\nAfter Numbers: 1/2 = 2/3\n")
-    (is-print (my-eq 1 2) #?"Before Integer: 1 = 2\nBefore Numbers: 1 = 2\nAfter Numbers: 1 = 2\nAfter Integer: 1 = 2\n")
+    (is-print (my-eq 1/2 2/3) "Before Numbers: 1/2 = 2/3. After Numbers: 1/2 = 2/3. ")
+    (is-print (my-eq 1 2) "Before Integer: 1 = 2. Before Numbers: 1 = 2. After Numbers: 1 = 2. After Integer: 1 = 2. ")
 
     ;; Test that :BEFORE and :AFTER methods are not called when not
     ;; applicable.
@@ -106,7 +104,7 @@
     (is-print
      (handler-case (foo "x")
        (no-primary-method-error () nil))
-     #?"FOO Before: x")
+     "FOO Before: x")
 
     (test-error (foo 1) no-primary-method-error)))
 
@@ -132,13 +130,13 @@
   "Test CALL-NEXT-METHOD from :BEFORE method"
 
   (locally (declare (inline baz) (optimize speed))
-    (is-print (baz 'x) #?"BAZ Before all: X NIL\n")
+    (is-print (baz 'x) "BAZ Before all: X NIL. ")
 
     (is-print
      (handler-case
 	 (baz 1)
        (illegal-call-next-method-error () nil))
-     #?"BAZ Before INTEGER: 1 NIL\n")
+     "BAZ Before INTEGER: 1 NIL. ")
 
     (test-error (baz 14) illegal-call-next-method-error)))
 
@@ -147,13 +145,13 @@
 
   (locally (declare (inline baz) (optimize speed))
     (is-print (baz #(1 2 3))
-	      #?"BAZ Before all: #(1 2 3) NIL\nBAZ After ARRAY: #(1 2 3) NIL\n")
+	      "BAZ Before all: #(1 2 3) NIL. BAZ After ARRAY: #(1 2 3) NIL. ")
 
     (is-print
      (handler-case
 	 (baz "abcd")
        (illegal-call-next-method-error () nil))
 
-     #?"BAZ Before all: abcd NIL\nBAZ After ARRAY: abcd NIL\nBAZ After STRING: abcd NIL\n")
+     "BAZ Before all: abcd NIL. BAZ After ARRAY: abcd NIL. BAZ After STRING: abcd NIL. ")
 
     (test-error (baz "xyz") illegal-call-next-method-error)))

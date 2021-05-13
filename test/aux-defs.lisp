@@ -52,16 +52,16 @@
 
 
 (defmethod my-eq :before ((a number) (b number))
-  (format t "Before Numbers: ~a = ~a~%" a b))
+  (format t "Before Numbers: ~a = ~a. " a b))
 
 (defmethod my-eq :before ((a integer) (b integer))
-  (format t "Before Integer: ~a = ~a~%" a b))
+  (format t "Before Integer: ~a = ~a. " a b))
 
 (defmethod my-eq :after ((a number) (b number))
-  (format t "After Numbers: ~a = ~a~%" a b))
+  (format t "After Numbers: ~a = ~a. " a b))
 
 (defmethod my-eq :after ((a integer) (b integer))
-  (format t "After Integer: ~a = ~a~%" a b))
+  (format t "After Integer: ~a = ~a. " a b))
 
 (defmethod my-eq :around ((a number) (b number))
   (list :around-number (call-next-method)))
@@ -93,17 +93,17 @@
   (:method (x) x))
 
 (defmethod baz :before (x)
-  (format t "BAZ Before all: ~a ~a~%" x (next-method-p)))
+  (format t "BAZ Before all: ~a ~a. " x (next-method-p)))
 
 (defmethod baz :before ((x integer))
-  (format t "BAZ Before INTEGER: ~a ~a~%" x (next-method-p))
+  (format t "BAZ Before INTEGER: ~a ~a. " x (next-method-p))
   (call-next-method))
 
 (defmethod baz :after ((x array))
-  (format t "BAZ After ARRAY: ~a ~a~%" x (next-method-p)))
+  (format t "BAZ After ARRAY: ~a ~a. " x (next-method-p)))
 
 (defmethod baz :after ((x string))
-  (format t "BAZ After STRING: ~a ~a~%" x (next-method-p))
+  (format t "BAZ After STRING: ~a ~a. " x (next-method-p))
   (call-next-method x))
 
 ;;; Macros
