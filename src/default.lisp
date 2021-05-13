@@ -33,15 +33,17 @@
 (defmacro enable-static-dispatch (&rest names)
   "Enable static dispatching for generic functions with names NAMES."
 
-  `(progn ,@(mapcar (curry #'list 'enable-static-dispatch%) names)))
-
-(defmacro enable-static-dispatch% (name)
-  "Enable static dispatching for the generic function with name NAME."
-
   `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (if (compiler-macro-function ',name)
-	 (warn "Generic function: ~a already has a compiler-macro. Static dispatch not enabled." ',name)
-	 (setf (compiler-macro-function ',name) #'static-dispatch))))
+     ,@(loop for name in names
+	  collect `(enable-static-dispatch% ',name))))
+
+(defun enable-static-dispatch% (name)
+  "Enable static dispatching for the generic function NAME."
+
+  (if (compiler-macro-function name)
+      (simple-style-warning "Could not enable static dispatch for ~a: Function already has a compiler-macro."
+			    name)
+      (setf (compiler-macro-function name) #'static-dispatch)))
 
 (defun static-dispatch (whole &optional env)
   "Compiler macro function for statically dispatched generic
