@@ -71,7 +71,7 @@
 
   (let ((x-int 5) (y-int 10))
     (declare (type integer x-int y-int)
-	     (optimize speed)
+	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -91,7 +91,7 @@
 
   (let ((x 0.5) (y 2.5))
     (declare (type float x y)
-	     (optimize speed)
+	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -108,7 +108,7 @@
   (let ((x 1) (y 3/2))
     (declare (type integer x)
 	     (type number y)
-	     (optimize speed)
+	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -124,7 +124,7 @@
 
   (let ((hello "hello"))
     (declare (type string hello)
-	     (optimize speed)
+	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -139,7 +139,7 @@
   "Test NEXT-METHOD-P with no next method"
 
   (locally (declare (inline foo)
-		    (optimize speed))
+		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
 
     (test-dispatch (foo 'x 0) '(other nil (x 0)))
     (test-dispatch (foo (pass-through "hello") +a-constant+)

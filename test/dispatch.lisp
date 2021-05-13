@@ -71,7 +71,7 @@
 (test (dispatch-constant-arguments :compile-at :run-time)
   "Test static dispatching on constant arguments"
 
-  (locally (declare (optimize speed)
+  (locally (declare (optimize speed #+sbcl sb-ext:inhibit-warnings)
 		    (inline add))
 
     (test-dispatch (add 1 2) '(number 3))
@@ -90,7 +90,8 @@
 	     (type string x-string y-string)
 	     (type (eql 3) z-int))
 
-    (declare (optimize speed) (inline add))
+    (declare (optimize speed #+sbcl sb-ext:inhibit-warnings)
+	     (inline add))
 
     (test-dispatch (add x-int y-int) '(number 3))
     (test-dispatch (add 1 x-int) '(number 2))
@@ -123,7 +124,7 @@
 	     (ftype (function (number) (values number number)) half)
 	     (ftype (function (string) string) reverse-string))
 
-    (declare (optimize speed)
+    (declare (optimize speed #+sbcl sb-ext:inhibit-warnings)
 	     (inline add reverse-string))
 
     (let ((x 1) (y 2)
@@ -151,7 +152,7 @@
     (let ((x 5)
 	  (hello "hello"))
 
-      (declare (optimize speed)
+      (declare (optimize speed #+sbcl sb-ext:inhibit-warnings)
 	       (inline add))
 
       (test-dispatch (add (the number (second (add 1 2)))
@@ -186,7 +187,7 @@
 
       (let ((x 1) (y 2))
 	(declare (type number x y))
-	(declare (optimize speed)
+	(declare (optimize speed #+sbcl sb-ext:inhibit-warnings)
 		 (inline add))
 
 	(symbol-macrolet ((x-mac x)

@@ -77,7 +77,7 @@
   "Test static dispatching of :AROUND methods"
 
   (locally (declare (inline my-eq)
-		    (optimize speed))
+		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
 
     (test-dispatch (my-eq 1/2 0.5) '(:around-number t))
     (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)))
@@ -88,7 +88,7 @@
   "Test static dispatching of :BEFORE and :AFTER methods"
 
   (locally (declare (inline my-eq)
-		    (optimize speed))
+		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
 
     (is-print (my-eq 1/2 2/3) "Before Numbers: 1/2 = 2/3. After Numbers: 1/2 = 2/3. ")
     (is-print (my-eq 1 2) "Before Integer: 1 = 2. Before Numbers: 1 = 2. After Numbers: 1 = 2. After Integer: 1 = 2. ")
@@ -100,7 +100,7 @@
 (test (before-method-without-primary :compile-at :run-time)
   "Test static dispatching of :BEFORE method without primary method"
 
-  (locally (declare (inline foo) (optimize speed))
+  (locally (declare (inline foo) (optimize speed #+sbcl sb-ext:inhibit-warnings))
     (is-print
      (handler-case (foo "x")
        (no-primary-method-error () nil))
@@ -111,7 +111,7 @@
 (test (after-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AFTER method without primary method"
 
-  (locally (declare (inline bar) (optimize speed))
+  (locally (declare (inline bar) (optimize speed #+sbcl sb-ext:inhibit-warnings))
     (is-print
      (handler-case (bar 1)
        (no-primary-method-error () nil))
@@ -122,14 +122,14 @@
 (test (around-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AROUND method without primary method"
 
-  (locally (declare (inline bar) (optimize speed))
+  (locally (declare (inline bar) (optimize speed #+sbcl sb-ext:inhibit-warnings))
     (test-error (bar "hello") no-primary-method-error)
     (test-error (bar 10) no-primary-method-error)))
 
 (test (before-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :BEFORE method"
 
-  (locally (declare (inline baz) (optimize speed))
+  (locally (declare (inline baz) (optimize speed #+sbcl sb-ext:inhibit-warnings))
     (is-print (baz 'x) "BAZ Before all: X NIL. ")
 
     (is-print
@@ -143,7 +143,7 @@
 (test (after-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :AFTER method"
 
-  (locally (declare (inline baz) (optimize speed))
+  (locally (declare (inline baz) (optimize speed #+sbcl sb-ext:inhibit-warnings))
     (is-print (baz #(1 2 3))
 	      "BAZ Before all: #(1 2 3) NIL. BAZ After ARRAY: #(1 2 3) NIL. ")
 
