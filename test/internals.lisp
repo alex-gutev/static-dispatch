@@ -189,7 +189,7 @@
       (pprint y)))
 
 (define-symbol-macro equal?-method5
-    '(static-dispatch:defmethod equal? and (x y)
+    '(static-dispatch:defmethod equal-2 and (x y)
       (pprint x)
       (pprint y)))
 
@@ -333,23 +333,31 @@
   (eval-method equal?-method3)
   (eval-method equal?-method4)
 
+  ;; Copy over generic function table from equal?
+
+  (setf (gethash 'equal-2 *generic-function-table*)
+	(gf-methods 'equal?))
+
+  (eval-method '(static-dispatch:defgeneric equal-2 (x y)
+		 (:method-combination and)))
+
   (eval-method equal?-method5)
 
-  ;; Check that the method table for equal? was removed as
+  ;; Check that the method table for equal-2 was removed as
   ;; method combinations are not supported.
 
-  (is-false (gf-methods 'equal?)
-	    "Method table for EQUAL? not removed.")
+  (is-false (gf-methods 'equal-2)
+	    "Method table for EQUAL-2 not removed.")
 
   ;; Check that even if a new method with no qualifiers is defined,
   ;; the method table will not be recreated.
 
-  (eval-method '(static-dispatch:defmethod equal? (x y)
+  (eval-method '(static-dispatch:defmethod equal-2 (x y)
 		 (pprint x)
 		 (pprint y)))
 
-  (is-false (gf-methods 'equal?)
-	    "New method added to removed method table for EQUAL?"))
+  (is-false (gf-methods 'equal-2)
+	    "New method added to removed method table for EQUAL-2"))
 
 
 ;;; Specializer Ordering Tests
