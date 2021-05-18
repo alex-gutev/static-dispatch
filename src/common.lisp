@@ -629,18 +629,17 @@
    TYPES is the list of the types of the arguments as determined from
    the lexical environment."
 
-  (let ((args (if (listp args) (cons 'list args) args)))
-    (with-gensyms (next-args)
-      `(flet ((call-next-method (&rest ,next-args)
-		(declare (ignore ,next-args))
-		(error 'illegal-call-next-method-error :method-type ,type))
+  (with-gensyms (next-args)
+    `(flet ((call-next-method (&rest ,next-args)
+	      (declare (ignore ,next-args))
+	      (error 'illegal-call-next-method-error :method-type ,type))
 
-	      (next-method-p () nil))
-	 (declare (ignorable #'call-next-method #'next-method-p))
+	    (next-method-p () nil))
+       (declare (ignorable #'call-next-method #'next-method-p))
 
-	 ,@(make-aux-method-body method args next-methods
-				 :check-types check-types
-				 :types types)))))
+       ,@(make-aux-method-body method args next-methods
+			       :check-types check-types
+			       :types types))))
 
 (defun make-aux-method-body (method args next-methods &key check-types types)
   "Return a list of forms containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
@@ -690,29 +689,28 @@
    NO-NEXT-METHOD is generated in the body of the last
    CALL-NEXT-METHOD function."
 
-  (let ((args (if (listp args) (cons 'list args) args)))
-    (destructuring-bind (&optional next-method &rest more-methods) next-methods
-      (with-gensyms (next-arg-var next-args)
-	`(flet ((call-next-method (&rest ,next-arg-var)
-		  (let ((,next-args (or ,next-arg-var ,args)))
-		    (declare (ignorable ,next-args))
-		    ,(cond
-		       (next-method
-			(make-primary-method-form
-			 next-method next-args more-methods
-			 :check-types check-types
-			 :last-form last-form))
+  (destructuring-bind (&optional next-method &rest more-methods) next-methods
+    (with-gensyms (next-arg-var next-args)
+      `(flet ((call-next-method (&rest ,next-arg-var)
+		(let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
+		  (declare (ignorable ,next-args))
+		  ,(cond
+		     (next-method
+		      (make-primary-method-form
+		       next-method next-args more-methods
+		       :check-types check-types
+		       :last-form last-form))
 
-		       (last-form (funcall last-form next-args))
+		     (last-form (funcall last-form next-args))
 
-		       (t
-			`(apply #'no-next-method ',*current-gf* nil ,next-args)))))
+		     (t
+		      `(apply #'no-next-method ',*current-gf* nil ,next-args)))))
 
-		(next-method-p ()
-		  ,(and (or next-method last-form) t)))
-	   (declare (ignorable #'call-next-method #'next-method-p))
+	      (next-method-p ()
+		,(and (or next-method last-form) t)))
+	 (declare (ignorable #'call-next-method #'next-method-p))
 
-	   ,(make-inline-method-body method args types check-types))))))
+	 ,(make-inline-method-body method args types check-types)))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -721,16 +719,152 @@
 
   (with-slots (lambda-list specializers body) method
     `(block ,(block-name *current-gf*)
-       (destructuring-bind ,lambda-list ,args
-	 ,(-> (subseq lambda-list 0 (length specializers))
-	      (make-ignorable-declarations))
-	 ,@(cond
-	     (types
-	      (list (make-type-declarations lambda-list types)))
-	     (check-types
-	      (make-type-checks lambda-list specializers)))
-	 ,@(body method)))))
+       ,(destructure-args
+	 args
+	 lambda-list
 
+	 `(,(-> (subseq lambda-list 0 (length specializers))
+	       (make-ignorable-declarations))
+	   ,@(cond
+	       (types
+		(list (make-type-declarations lambda-list types)))
+	       (check-types
+		(make-type-checks lambda-list specializers)))
+	   ,@(body method))))))
+
+(defun destructure-args (args lambda-list body)
+  "Destructure the argument list, based on the lambda-list, if possible.
+
+   Generates a binding form for the variables in a lambda-list which
+   are bound to the argument forms of the arguments to the generic
+   function call.
+
+   ARGS is the list of argument forms passed to the generic function.
+
+   LAMBDA-LIST is the method lambda list.
+
+   BODY is the list of forms comprising the method body which are
+   inserted in the body of the binding form. The first element of BODY
+   may be a declare expression.
+
+   Returns a binding form, binding all variables in LAMBDA-LIST and
+   containing BODY."
+
+  (etypecase args
+    (cons
+     (handler-case
+	 `(let* ,(destructure-list lambda-list args)
+	    ,@body)
+
+       (error ()
+	 `(destructuring-bind ,lambda-list (list ,@args)
+	    ,@body))))
+
+    (symbol
+     `(destructuring-bind ,lambda-list ,args
+	,@body))))
+
+(defun destructure-list (lambda-list list)
+  "Destructure a list.
+
+   LAMBDA-LIST is the lambda-list specifying how LIST is destructured.
+
+   LIST is the list of forms which are destructured.
+
+   Returns a list of LET* bindings which bind the variables in
+   LAMBDA-LIST to the corresponding forms in LIST. If destructuring
+   fails an error condition is signalled."
+
+  (labels ((optional-vars (optional)
+	     ;; Extract variable names from optional argument
+	     ;; specifiers.
+
+	     (mappend #'optional-var optional))
+
+	   (optional-var (spec)
+	     ;; Extract variable names from a single optional argument
+	     ;; specifier.
+
+	     (ematch spec
+	       ((list name _ nil)
+		(list name))
+
+	       ((list name _ sp)
+		(list name sp))))
+
+	   (key-vars (key)
+	     ;; Extract variable names from keyword argument
+	     ;; specifiers.
+
+	     (mappend #'key-var key))
+
+	   (key-var (spec)
+	     ;; Extract variable names from a single keyword argument
+	     ;; specifier.
+
+	     (ematch spec
+	       ((list (list _ name) _ nil)
+		(list name))
+
+	       ((list (list _ name) _ sp)
+		(list name sp))))
+
+	   (aux-vars (aux)
+	     ;; Extract variable names from auxiliary argument
+	     ;; specifiers.
+
+	     (mapcar #'first aux))
+
+	   (quote-init-form (spec)
+	     ;; Quote the initialization form in an argument
+	     ;; specifier. If the argument does not have an
+	     ;; initialization form, returns it as is.
+
+	     (match spec
+	       ((list* name init sp)
+		(list* name `',init sp))
+
+	       (_ spec))))
+
+    (multiple-value-bind (required optional rest key allow-other-keys aux)
+	(parse-ordinary-lambda-list lambda-list)
+
+      (declare (ignore allow-other-keys))
+
+      (let ((vars (append required
+			  (optional-vars optional)
+			  (ensure-list rest)
+			  (key-vars key)
+			  (aux-vars aux))))
+
+	(eval
+	 `(destructuring-bind ,(mapcar #'quote-init-form lambda-list)
+	      (list ,@(mapcar (curry #'list 'quote) list))
+
+	    (list
+	     ,@(loop
+		  for var in vars
+		  collect
+		    (if (eq var rest)
+			`(list ',var `(list ,@,var))
+			`(list ',var ,var))))))))))
+
+(defun next-method-default-args (args)
+  "Generate the default CALL-NEXT-METHOD argument list form.
+
+   ARGS is the argument list specifier of the arguments passed to the
+   current method. This may either be a list of forms or a symbol
+   which names a variable in which the full list is stored.
+
+   Returns a form that creates the default CALL-NEXT-METHOD argument
+   list."
+
+  (etypecase args
+    (list
+     `(list ,@args))
+
+    (symbol
+     args)))
 
 (defun block-name (gf-name)
   "Returns the name of the implicit block, surrounding a method of the
