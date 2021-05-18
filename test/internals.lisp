@@ -819,3 +819,322 @@
 	     (eq x y)))))
 
      (inline-methods (list method-inlining-method2) '(a b) nil '(t t)))))
+
+;;;; Test Optional Arguments
+
+(test method-inline-with-optional-arguments
+  "Test inlining a method with optional arguments"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 (get-s1 s1))
+	    ($a2 (get-s2 s2))
+	    ($a3 (get-s3 s3)))
+       (declare (type string $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 $a2 $a3))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (let* ((a $a1)
+		  (b $a2)
+		  (c $a3)
+		  (c-sp t)
+		  (d 1)
+		  (d-sp nil))
+	     (declare (ignorable a))
+	     (declare (type string a))
+	     (pprint a)
+	     (pprint b)
+	     (list a b c d)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((pprint a) (pprint b) (list a b c d))
+			   :lambda-list '(a &optional b (c nil c-sp) (d 1 d-sp))
+			   :qualifier nil
+			   :specializers '(string)))
+      '((get-s1 s1) (get-s2 s2) (get-s3 s3))
+      nil
+      '(string)))))
+
+;;;; Test Rest Arguments
+
+(test method-inline-with-rest-argument-empty
+  "Test inlining a method with empty rest argument"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 (something x))
+	    ($a2 y))
+       (declare (type integer $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 $a2))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (let* ((a $a1)
+		  (b $a2)
+		  (xs (list)))
+	     (declare (ignorable a))
+	     (declare (type integer a))
+	     (pprint a)
+	     (pprint b)
+	     (list* a b xs)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((pprint a) (pprint b) (list* a b xs))
+			   :lambda-list '(a &optional b &rest xs)
+			   :qualifier nil
+			   :specializers '(number)))
+      '((something x) y)
+      nil
+      '(integer)))))
+
+(test method-inline-with-rest-argument
+  "Test inlining a method with non-empty rest argument"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 (something a))
+	    ($a2 b)
+	    ($a3 c)
+	    ($a4 d))
+       (declare (type character $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 $a2 $a3 $a4 1 2 3))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (let* ((a $a1)
+		  (b $a2)
+		  (xs (list $a3 $a4 1 2 3)))
+	     (declare (ignorable a))
+	     (declare (type character a))
+	     (pprint a)
+	     (pprint b)
+	     (list* a b xs)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((pprint a) (pprint b) (list* a b xs))
+			   :lambda-list '(a &optional b &rest xs)
+			   :qualifier nil
+			   :specializers '(character)))
+      '((something a) b c d 1 2 3)
+      nil
+      '(character)))))
+
+;;;; Test Keyword Arguments
+
+(test method-inline-with-key-arguments
+  "Test inlining a method with keyword"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 a)
+	    ($a2 b)
+	    ($a3 c)
+	    ($a4 (* a b)))
+       (declare (type number $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 :v2 $a2 :key123 $a3 :v3 $a4))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (let* ((v1 $a1) (v2 $a2) (v3 $a4) (v4 $a3)
+		  (v5 0) (v5-sp nil))
+	     (declare (ignorable v1))
+	     (declare (type number v1))
+	     (list v1 v2 v3 v4 v5)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((list v1 v2 v3 v4 v5))
+			   :lambda-list '(v1 &key v2 (v3 1) ((:key123 v4) (+ v1 v2)) (v5 0 v5-sp))
+			   :qualifier nil
+			   :specializers '(number)))
+      '(a :v2 b :key123 c :v3 (* a b))
+      nil
+      '(number)))))
+
+(test method-inline-with-key-and-rest-arguments
+  "Test inlining a method with keyword and rest arguments"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 a)
+	    ($a2 b)
+	    ($a3 c)
+	    ($a4 (* a b))
+	    ($a5 (+ x y z)))
+       (declare (type number $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 :v2 $a2 :key123 $a3 :v3 $a4 :other $a5))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (let* ((v1 $a1)
+		  (all (list :v2 $a2 :key123 $a3 :v3 $a4 :other $a5))
+		  (v2 $a2)
+		  (v3 $a4)
+		  (v4 $a3)
+		  (v4-sp t)
+		  (v5 0))
+	     (declare (ignorable v1))
+	     (declare (type number v1))
+	     (list v1 v2 v3 v4 v5)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((list v1 v2 v3 v4 v5))
+			   :lambda-list '(v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+			   :qualifier nil
+			   :specializers '(number)))
+      '(a :v2 b :key123 c :v3 (* a b) :other (+ x y z))
+      nil
+      '(number)))))
+
+(test method-inline-with-key-and-rest-arguments-fail-1
+  "Test inlining a method with failed keyword argument destructuring"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 a)
+	    ($a2 b)
+	    ($a3 c)
+	    ($a4 (* a b))
+	    ($a5 (+ x y z)))
+       (declare (type number $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 :v2 $a2 :key123 $a3 :v3 $a4 :other $a5))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+	       (list $a1 :v2 $a2 :key123 $a3 :v3 $a4 :other $a5)
+
+	     (declare (ignorable v1))
+	     (declare (type number v1))
+	     (list v1 v2 v3 v4 v5)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((list v1 v2 v3 v4 v5))
+			   :lambda-list '(v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+			   :qualifier nil
+			   :specializers '(number)))
+      '(a :v2 b :key123 c :v3 (* a b) :other (+ x y z))
+      nil
+      '(number)))))
+
+(test method-inline-with-key-and-rest-arguments-fail-2
+  "Test inlining a method with failed keyword argument destructuring"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 a)
+	    ($key1 key1)
+	    ($a2 b)
+	    ($key2 key2)
+	    ($a3 c)
+	    ($key3 key3)
+	    ($a4 (* a b)))
+       (declare (type number $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 $key1 $a2 $key2 $a3 $key3 $a4))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+	       (list $a1 $key1 $a2 $key2 $a3 $key3 $a4)
+
+	     (declare (ignorable v1))
+	     (declare (type number v1))
+	     (list v1 v2 v3 v4 v5)))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '((list v1 v2 v3 v4 v5))
+			   :lambda-list '(v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+			   :qualifier nil
+			   :specializers '(number)))
+      '(a key1 b key2 c key3 (* a b))
+      nil
+      '(number)))))
+
+(test method-inline-with-aux-arguments
+  "Test inlining a method with auxiliary arguments"
+
+  (let ((*current-gf* 'inline-test))
+    (is-form
+     '(let (($a1 (get-arg a)))
+       (declare (type integer $a1))
+
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 1))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method 'inline-test nil $next)))
+
+	      (next-method-p () nil))
+
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block inline-test
+	   (let* ((x $a1) (y 1) (sum (+ x y)))
+	     (declare (ignorable x))
+	     (declare (type integer x))
+	     sum))))
+
+     (inline-methods
+      (list (make-instance 'method-info
+			   :body '(sum)
+			   :lambda-list '(x y &aux (sum (+ x y)))
+			   :qualifier nil
+			   :specializers '(number)))
+      '((get-arg a) 1)
+      nil
+      '(integer)))))
