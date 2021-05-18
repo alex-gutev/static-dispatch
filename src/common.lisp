@@ -500,68 +500,114 @@
    TYPES is a list of the argument types, determined from the lexical
    environment."
 
-  (labels
-      ((make-before (methods &optional (types types) (args args))
-	 (when methods
-	   (make-aux-methods
-	    :before
-	    (first methods) args (rest methods)
-	    :check-types check-types
-	    :types types)))
+  (multiple-value-bind (bindings args declarations)
+      (make-argument-bindings args types)
 
-       (make-primary (before methods &optional (types types) (args args))
-	 (let ((form
-		(primary-method-form methods types args)))
-
-	   (if before
-	       `(progn ,before ,form)
-	       form)))
-
-       (primary-method-form (methods types args)
-	 (match methods
-	   ((list* first rest)
-	    (make-primary-method-form
-	     first args rest
-	     :check-types check-types
-	     :types types))
-
-	   (_
-	    `(error 'no-primary-method-error
-		    :gf-name ',*current-gf*
-		    :args ,(if (listp args) (cons 'list args) args)))))
-
-       (make-after (primary methods &optional (types types) (args args))
-	 (if methods
-	     `(prog1 ,primary
-		,(make-aux-methods
-		  :after
-		  (first methods) args (rest methods)
-		  :check-types check-types
-		  :types types))
-
-	     primary))
-
-       (make-all (types before primary after &optional (args args))
-	 (-> (make-before before types args)
-	     (make-primary primary types args)
-	     (make-after after types args)))
-
-       (make-around (around before primary after)
-	 (if around
-	     (make-primary-method-form
-	      (first around) args (rest around)
+    (labels
+	((make-before (methods &optional (types types) (args args))
+	   (when methods
+	     (make-aux-methods
+	      :before
+	      (first methods) args (rest methods)
 	      :check-types check-types
-	      :types types
-	      :last-form (curry #'make-all nil before primary after))
+	      :types types)))
 
-	     (make-all types before primary after))))
+	 (make-primary (before methods &optional (types types) (args args))
+	   (let ((form
+		  (primary-method-form methods types args)))
 
-    (let ((before (remove-if-not (curry #'eql :before) methods :key #'qualifier))
-	  (primary (remove-if-not #'null methods :key #'qualifier))
-	  (after (remove-if-not (curry #'eql :after) methods :key #'qualifier))
-	  (around (remove-if-not (curry #'eql :around) methods :key #'qualifier)))
+	     (if before
+		 `(progn ,before ,form)
+		 form)))
 
-      (make-around around before primary after))))
+	 (primary-method-form (methods types args)
+	   (match methods
+	     ((list* first rest)
+	      (make-primary-method-form
+	       first args rest
+	       :check-types check-types
+	       :types types))
+
+	     (_
+	      `(error 'no-primary-method-error
+		      :gf-name ',*current-gf*
+		      :args ,(if (listp args) (cons 'list args) args)))))
+
+	 (make-after (primary methods &optional (types types) (args args))
+	   (if methods
+	       `(prog1 ,primary
+		  ,(make-aux-methods
+		    :after
+		    (first methods) args (rest methods)
+		    :check-types check-types
+		    :types types))
+
+	       primary))
+
+	 (make-all (types before primary after &optional (args args))
+	   (-> (make-before before types args)
+	       (make-primary primary types args)
+	       (make-after after types args)))
+
+	 (make-around (around before primary after)
+	   (if around
+	       (make-primary-method-form
+		(first around) args (rest around)
+		:check-types check-types
+		:types types
+		:last-form (curry #'make-all nil before primary after))
+
+	       (make-all types before primary after))))
+
+      (let ((before (remove-if-not (curry #'eql :before) methods :key #'qualifier))
+	    (primary (remove-if-not #'null methods :key #'qualifier))
+	    (after (remove-if-not (curry #'eql :after) methods :key #'qualifier))
+	    (around (remove-if-not (curry #'eql :around) methods :key #'qualifier)))
+
+	`(let ,bindings
+	   ,@(when declarations
+	       `((declare ,@declarations)))
+
+	   ,(make-around around before primary after))))))
+
+(defun make-argument-bindings (args types)
+  "Generating LET bindings which bind the arguments to variables.
+
+   ARGS is the list of argument forms passed to the generic function
+   call. If it's a symbol it represents the name of a variable which
+   stores the argument list.
+
+   TYPES is the list of type specifiers of the arguments, as
+   determined from the environment.
+
+   Returns three values:
+
+    1. A list of LET bindings.
+    2. The new argument list.
+    3. A list of declarations relating to the variables."
+
+  (etypecase args
+    (symbol (values nil args nil))
+
+    (list
+     (iter
+       (for i from 0)
+       (for arg in args)
+       (for (type . rest-types) initially types then rest-types)
+
+       (cond
+	 ((constantp arg)
+	  (collect arg into arg-list))
+
+	 (t
+	  (let ((var (gensym (format nil "a~a" i))))
+	    (collect (list var arg) into bindings)
+	    (collect var into arg-list)
+
+	    (when type
+	      (collect `(type ,type ,var) into declarations)))))
+
+       (finally (return (values bindings arg-list declarations)))))))
 
 (defun make-aux-methods (type method args next-methods &key check-types types)
   "Return a form containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
