@@ -322,6 +322,10 @@
   "The name of the generic function currently being inlined/statically
    dispatched.")
 
+(defvar *full-arg-list-form* nil
+  "Bound to a from which constructs the full argument list for use as
+   the default argument list in CALL-NEXT-METHOD.")
+
 (define-condition illegal-call-next-method-error (error)
   ((method-type
     :reader method-type
@@ -760,6 +764,9 @@
    containing BODY."
 
   (etypecase args
+    (null
+     `(let () ,@body))
+
     (cons
      (handler-case
 	 `(let* ,(destructure-list lambda-list args)
@@ -880,7 +887,10 @@
    list."
 
   (etypecase args
-    (list
+    (null
+     *full-arg-list-form*)
+
+    (cons
      `(list ,@args))
 
     (symbol
