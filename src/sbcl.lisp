@@ -172,8 +172,10 @@
 
    BODY is the form which implements the transform."
 
-  (with-slots (lambda-list) method
+  (with-slots (lambda-list specializers) method
     `(sb-c:deftransform ,name (,lambda-list ,type-list * :policy (> speed safety) :node ,node)
+       ,(format nil "Inline ~s method ~s" name specializers)
+
        (let ((*full-arg-list-form* ,(make-reconstruct-arg-list lambda-list)))
 	 ,body))))
 
@@ -198,6 +200,8 @@
 
   (with-slots (specializers) method
     `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety) :node ,node)
+       ,(format nil "Inline ~s method ~s" name specializers)
+
        ,body)))
 
 (defun lambda-list->type-list (lambda-list specializers)
