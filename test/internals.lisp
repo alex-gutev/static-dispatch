@@ -650,7 +650,10 @@
        (declare (ignorable #'call-next-method #'next-method-p))
 
        (block equal?
-	 (destructuring-bind (a b &optional c) (list $a1 3)
+	 (let* ((a $a1)
+		(b 3)
+		(c nil))
+
 	   (declare (ignorable a b))
 	   (declare (type integer a) (type integer b))
 
@@ -675,7 +678,9 @@
        (declare (ignorable #'call-next-method #'next-method-p))
 
        (block equal?
-	 (destructuring-bind (x y &optional c) (list $a1 $a2)
+	 (let* ((x $a1)
+		(y $a2)
+		(c nil))
 	   (declare (ignorable x y))
 	   (check-type x t)
 	   (check-type y t)
@@ -715,7 +720,10 @@
        (declare (ignorable #'call-next-method #'next-method-p))
 
        (block equal?
-	 (destructuring-bind (a b &optional c) (list $a1 3)
+	 (let* ((a $a1)
+		(b 3)
+		(c nil))
+
 	   (declare (ignorable a b))
 	   (declare (type number a) (type number b))
 
@@ -742,7 +750,7 @@
 	 (declare (ignorable #'call-next-method #'next-method-p))
 
 	 (block equal?
-	   (destructuring-bind (n1 n2 &optional z) (list $a1 $a2)
+	   (let* ((n1 $a1) (n2 $a2) (z nil))
 	     (declare (ignorable n1 n2))
 	     (declare (type fixnum n1) (type integer n2))
 	     (pprint n1)
@@ -770,7 +778,7 @@
 	 (declare (ignorable #'call-next-method #'next-method-p))
 
 	 (block equal?
-	   (destructuring-bind (a b &optional c) (list $a1 $a2)
+	   (let* ((a $a1) (b $a2) (c nil))
 	     (declare (ignorable a b))
 	     (declare (type fixnum a) (type integer b))
 
@@ -804,7 +812,7 @@
 	 (declare (ignorable #'call-next-method #'next-method-p))
 
 	 (block field
-	   (destructuring-bind (x y &optional c) (list $a1 $a2)
+	   (let* ((x $a1) (y $a2) (c nil))
 	     (declare (ignorable x y))
 	     (declare (type t x) (type t y))
 	     (eq x y)))))
