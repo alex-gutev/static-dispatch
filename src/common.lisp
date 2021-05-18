@@ -824,12 +824,23 @@
 	       ((list* name init sp)
 		(list* name `',init sp))
 
-	       (_ spec))))
+	       (_ spec)))
+
+	   (constant-keywords-p (args)
+	     ;; Check that each of the keywords in the keyword portion
+	     ;; are constant expressions.
+	     (loop for arg in args by #'cddr
+		  always (constantp arg *env*))))
 
     (multiple-value-bind (required optional rest key allow-other-keys aux)
 	(parse-ordinary-lambda-list lambda-list)
 
-      (declare (ignore allow-other-keys))
+      (when (and allow-other-keys
+		 (->> (+ (length required) (length optional))
+		      (subseq list)
+		      constant-keywords-p
+		      not))
+	(error "Compile-time destructuring failed: non-constant keywords."))
 
       (let ((vars (append required
 			  (optional-vars optional)
