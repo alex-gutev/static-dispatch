@@ -723,14 +723,23 @@
 	 args
 	 lambda-list
 
-	 `(,(-> (subseq lambda-list 0 (length specializers))
-	       (make-ignorable-declarations))
-	   ,@(cond
-	       (types
-		(list (make-type-declarations lambda-list types)))
-	       (check-types
-		(make-type-checks lambda-list specializers)))
-	   ,@(body method))))))
+	 (multiple-value-bind (forms declarations)
+	     (parse-body body :documentation t)
+
+	   `(,@(when args
+		 (-> (subseq lambda-list 0 (length specializers))
+		     (make-ignorable-declarations)
+		     list))
+
+	       ,@(when types
+		   (list (make-type-declarations lambda-list types)))
+
+	       ,@declarations
+
+	       ,@(when (and (null types) check-types)
+		   (make-type-checks lambda-list specializers))
+
+	       ,@forms))))))
 
 (defun destructure-args (args lambda-list body)
   "Destructure the argument list, based on the lambda-list, if possible.
