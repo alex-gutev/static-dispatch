@@ -589,7 +589,7 @@
 (define-symbol-macro method-inlining-method1
     (make-instance 'method-info
 		   :body '((= a b))
-		   :lambda-list '(a b &optional c)
+		   :lambda-list '(a b &optional (c (* a b)))
 		   :qualifier nil
 		   :specializers '(number number)))
 
@@ -604,7 +604,7 @@
     (make-instance 'method-info
 		   :body '((pprint n1)
 			   (pprint n2))
-		   :lambda-list '(n1 n2 &optional z)
+		   :lambda-list '(n1 n2 &optional (z 'x z-sp))
 		   :qualifier :before
 		   :specializers '(number t)))
 
@@ -652,7 +652,7 @@
        (block equal?
 	 (let* ((a $a1)
 		(b 3)
-		(c nil))
+		(c (* a b)))
 
 	   (declare (ignorable a b))
 	   (declare (type integer a) (type integer b))
@@ -693,11 +693,12 @@
   "Test method inlining with type checks"
 
   (is-form
-   '(let (($a1 (+ u v)))
+   '(let (($a1 (+ u v))
+	  ($a3 arg))
      (declare (type number $a1))
 
      (flet ((call-next-method (&rest $args1)
-	      (let (($next1 (or $args1 (list $a1 3))))
+	      (let (($next1 (or $args1 (list $a1 3 $a3))))
 		(declare (ignorable $next1))
 		(flet ((call-next-method (&rest $args2)
 			 (let (($next2 (or $args2 $next1)))
@@ -722,7 +723,7 @@
        (block equal?
 	 (let* ((a $a1)
 		(b 3)
-		(c nil))
+		(c $a3))
 
 	   (declare (ignorable a b))
 	   (declare (type number a) (type number b))
@@ -730,7 +731,7 @@
 	   (= a b)))))
 
    (inline-methods (list method-inlining-method1 method-inlining-method2)
-		   '((+ u v) 3) t '(number number))))
+		   '((+ u v) 3 arg) t '(number number))))
 
 (test (method-inline-with-before-method :fixture inlining-equal?)
   "Test method inlining with :BEFORE method"
@@ -750,7 +751,7 @@
 	 (declare (ignorable #'call-next-method #'next-method-p))
 
 	 (block equal?
-	   (let* ((n1 $a1) (n2 $a2) (z nil))
+	   (let* ((n1 $a1) (n2 $a2) (z 'x) (z-sp nil))
 	     (declare (ignorable n1 n2))
 	     (declare (type fixnum n1) (type integer n2))
 	     (pprint n1)
@@ -778,7 +779,7 @@
 	 (declare (ignorable #'call-next-method #'next-method-p))
 
 	 (block equal?
-	   (let* ((a $a1) (b $a2) (c nil))
+	   (let* ((a $a1) (b $a2) (c (* a b)))
 	     (declare (ignorable a b))
 	     (declare (type fixnum a) (type integer b))
 
