@@ -626,32 +626,35 @@
   "Test method inlining with one next method"
 
   (is-form
-   '(flet ((call-next-method (&rest $args1)
-	    (let (($next1 (or $args1 (list (+ u v) 3))))
-	      (declare (ignorable $next1))
-	      (flet ((call-next-method (&rest $args2)
-		       (let (($next2 (or $args2 $next1)))
-			 (declare (ignorable $next2))
-			 (apply #'no-next-method 'equal? nil $next2)))
+   '(let (($a1 (+ u v)))
+     (declare (type integer $a1))
 
-		     (next-method-p () nil))
+     (flet ((call-next-method (&rest $args1)
+	      (let (($next1 (or $args1 (list $a1 3))))
+		(declare (ignorable $next1))
+		(flet ((call-next-method (&rest $args2)
+			 (let (($next2 (or $args2 $next1)))
+			   (declare (ignorable $next2))
+			   (apply #'no-next-method 'equal? nil $next2)))
 
-		(declare (ignorable #'call-next-method #'next-method-p))
+		       (next-method-p () nil))
 
-		(block equal?
-		  (destructuring-bind (x y &optional c) $next1
-		    (declare (ignorable x y))
-		    (eq x y))))))
+		  (declare (ignorable #'call-next-method #'next-method-p))
 
-	   (next-method-p () t))
-     (declare (ignorable #'call-next-method #'next-method-p))
+		  (block equal?
+		    (destructuring-bind (x y &optional c) $next1
+		      (declare (ignorable x y))
+		      (eq x y))))))
 
-     (block equal?
-       (destructuring-bind (a b &optional c) (list (+ u v) 3)
-	 (declare (ignorable a b))
-	 (declare (type integer a) (type integer b))
+	    (next-method-p () t))
+       (declare (ignorable #'call-next-method #'next-method-p))
 
-	 (= a b))))
+       (block equal?
+	 (destructuring-bind (a b &optional c) (list $a1 3)
+	   (declare (ignorable a b))
+	   (declare (type integer a) (type integer b))
+
+	   (= a b)))))
 
    (inline-methods (list method-inlining-method1 method-inlining-method2)
 		   '((+ u v) 3) nil '(integer integer))))
@@ -660,21 +663,24 @@
   "Test method inlining with no next methods"
 
   (is-form
-   '(flet ((call-next-method (&rest $args)
-	    (let (($next (or $args (list y z))))
-	      (declare (ignorable $next))
-	      (apply #'no-next-method 'equal? nil $next)))
+   '(let (($a1 y)
+	  ($a2 z))
 
-	   (next-method-p () nil))
-     (declare (ignorable #'call-next-method #'next-method-p))
+     (flet ((call-next-method (&rest $args)
+	      (let (($next (or $args (list $a1 $a2))))
+		(declare (ignorable $next))
+		(apply #'no-next-method 'equal? nil $next)))
 
-     (block equal?
-       (destructuring-bind (x y &optional c) (list y z)
-	 (declare (ignorable x y))
-	 (check-type x t)
-	 (check-type y t)
+	    (next-method-p () nil))
+       (declare (ignorable #'call-next-method #'next-method-p))
 
-	 (eq x y))))
+       (block equal?
+	 (destructuring-bind (x y &optional c) (list $a1 $a2)
+	   (declare (ignorable x y))
+	   (check-type x t)
+	   (check-type y t)
+
+	   (eq x y)))))
 
    (inline-methods (list method-inlining-method2) '(y z) t)))
 
@@ -682,35 +688,38 @@
   "Test method inlining with type checks"
 
   (is-form
-   '(flet ((call-next-method (&rest $args1)
-	    (let (($next1 (or $args1 (list (+ u v) 3))))
-	      (declare (ignorable $next1))
-	      (flet ((call-next-method (&rest $args2)
-		       (let (($next2 (or $args2 $next1)))
-			 (declare (ignorable $next2))
-			 (apply #'no-next-method 'equal? nil $next2)))
+   '(let (($a1 (+ u v)))
+     (declare (type number $a1))
 
-		     (next-method-p () nil))
+     (flet ((call-next-method (&rest $args1)
+	      (let (($next1 (or $args1 (list $a1 3))))
+		(declare (ignorable $next1))
+		(flet ((call-next-method (&rest $args2)
+			 (let (($next2 (or $args2 $next1)))
+			   (declare (ignorable $next2))
+			   (apply #'no-next-method 'equal? nil $next2)))
 
-		(declare (ignorable #'call-next-method #'next-method-p))
+		       (next-method-p () nil))
 
-		(block equal?
-		  (destructuring-bind (x y &optional c) $next1
-		    (declare (ignorable x y))
-		    (check-type x t)
-		    (check-type y t)
-		    (eq x y))))))
+		  (declare (ignorable #'call-next-method #'next-method-p))
 
-	   (next-method-p () t))
+		  (block equal?
+		    (destructuring-bind (x y &optional c) $next1
+		      (declare (ignorable x y))
+		      (check-type x t)
+		      (check-type y t)
+		      (eq x y))))))
 
-     (declare (ignorable #'call-next-method #'next-method-p))
+	    (next-method-p () t))
 
-     (block equal?
-       (destructuring-bind (a b &optional c) (list (+ u v) 3)
-	 (declare (ignorable a b))
-	 (declare (type number a) (type number b))
+       (declare (ignorable #'call-next-method #'next-method-p))
 
-	 (= a b))))
+       (block equal?
+	 (destructuring-bind (a b &optional c) (list $a1 3)
+	   (declare (ignorable a b))
+	   (declare (type number a) (type number b))
+
+	   (= a b)))))
 
    (inline-methods (list method-inlining-method1 method-inlining-method2)
 		   '((+ u v) 3) t '(number number))))
@@ -719,48 +728,53 @@
   "Test method inlining with :BEFORE method"
 
   (is-form
-   '(progn
-     (flet ((call-next-method (&rest $args1)
-	      (declare (ignore $args1))
-	      (error 'illegal-call-next-method-error :method-type :before))
+   '(let (($a1 (f x))
+	  ($a2 (* z 4)))
+     (declare (type fixnum $a1)
+      (type integer $a2))
 
-	    (next-method-p () nil))
-       (declare (ignorable #'call-next-method #'next-method-p))
+     (progn
+       (flet ((call-next-method (&rest $args1)
+		(declare (ignore $args1))
+		(error 'illegal-call-next-method-error :method-type :before))
 
-       (block equal?
-	 (destructuring-bind (n1 n2 &optional z) (list (f x) (* z 4))
-	   (declare (ignorable n1 n2))
-	   (declare (type fixnum n1) (type integer n2))
-	   (pprint n1)
-	   (pprint n2))))
+	      (next-method-p () nil))
+	 (declare (ignorable #'call-next-method #'next-method-p))
 
-     (flet ((call-next-method (&rest $args2)
-	      (let (($next2 (or $args2 (list (f x) (* z 4)))))
-		(declare (ignorable $next2))
-		(flet ((call-next-method (&rest $args3)
-			 (let (($next3 (or $args3 $next2)))
-			   (declare (ignorable $next3))
-			   (apply #'no-next-method 'equal? nil $next3)))
+	 (block equal?
+	   (destructuring-bind (n1 n2 &optional z) (list $a1 $a2)
+	     (declare (ignorable n1 n2))
+	     (declare (type fixnum n1) (type integer n2))
+	     (pprint n1)
+	     (pprint n2))))
 
-		       (next-method-p () nil))
+       (flet ((call-next-method (&rest $args2)
+		(let (($next2 (or $args2 (list $a1 $a2))))
+		  (declare (ignorable $next2))
+		  (flet ((call-next-method (&rest $args3)
+			   (let (($next3 (or $args3 $next2)))
+			     (declare (ignorable $next3))
+			     (apply #'no-next-method 'equal? nil $next3)))
 
-		  (declare (ignorable #'call-next-method #'next-method-p))
+			 (next-method-p () nil))
 
-		  (block equal?
-		    (destructuring-bind (x y &optional c) $next2
-		      (declare (ignorable x y))
-		      (eq x y))))))
+		    (declare (ignorable #'call-next-method #'next-method-p))
 
-	    (next-method-p () t))
+		    (block equal?
+		      (destructuring-bind (x y &optional c) $next2
+			(declare (ignorable x y))
+			(eq x y))))))
 
-       (declare (ignorable #'call-next-method #'next-method-p))
+	      (next-method-p () t))
 
-       (block equal?
-	 (destructuring-bind (a b &optional c) (list (f x) (* z 4))
-	   (declare (ignorable a b))
-	   (declare (type fixnum a) (type integer b))
+	 (declare (ignorable #'call-next-method #'next-method-p))
 
-	   (= a b)))))
+	 (block equal?
+	   (destructuring-bind (a b &optional c) (list $a1 $a2)
+	     (declare (ignorable a b))
+	     (declare (type fixnum a) (type integer b))
+
+	     (= a b))))))
 
    (inline-methods (list method-inlining-method3
 			 method-inlining-method1
@@ -775,19 +789,24 @@
 
   (let ((*current-gf* '(setf field)))
     (is-form
-     '(flet ((call-next-method (&rest $args)
-	      (let (($next (or $args (list a b))))
-		(declare (ignorable $next))
-		(apply #'no-next-method '(setf field) nil $next)))
+     '(let (($a1 a)
+	    ($a2 b))
+       (declare (type t $a1)
+	(type t $a2))
 
-	     (next-method-p () nil))
+       (flet ((call-next-method (&rest $args)
+		(let (($next (or $args (list $a1 $a2))))
+		  (declare (ignorable $next))
+		  (apply #'no-next-method '(setf field) nil $next)))
 
-       (declare (ignorable #'call-next-method #'next-method-p))
+	      (next-method-p () nil))
 
-       (block field
-	 (destructuring-bind (x y &optional c) (list a b)
-	   (declare (ignorable x y))
-	   (declare (type t x) (type t y))
-	   (eq x y))))
+	 (declare (ignorable #'call-next-method #'next-method-p))
+
+	 (block field
+	   (destructuring-bind (x y &optional c) (list $a1 $a2)
+	     (declare (ignorable x y))
+	     (declare (type t x) (type t y))
+	     (eq x y)))))
 
      (inline-methods (list method-inlining-method2) '(a b) nil '(t t)))))
