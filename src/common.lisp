@@ -314,6 +314,10 @@
 
 ;;; Method Inlining
 
+(defvar *env* nil
+  "Environment in which the current generic function is being
+   statically dispatched.")
+
 (defvar *current-gf* nil
   "The name of the generic function currently being inlined/statically
    dispatched.")
@@ -596,7 +600,7 @@
        (for (type . rest-types) initially types then rest-types)
 
        (cond
-	 ((constantp arg)
+	 ((constantp arg *env*)
 	  (collect arg into arg-list))
 
 	 (t

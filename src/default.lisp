@@ -74,8 +74,9 @@
    types of the arguments could not be determined, NIL is returned."
 
   (when (fboundp gf-name)
-   (let* ((*current-gf* gf-name)
-	  (gf (fdefinition gf-name)))
+    (let* ((*current-gf* gf-name)
+	   (*env* env)
+	   (gf (fdefinition gf-name)))
 
      (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
 	    (match-args (order-by-precedence precedence args))
