@@ -315,6 +315,12 @@
 
   nil)
 
+(defmacro static-method-function-test-hook ()
+  "A form of this macro is inserted in method functions, in order to
+   allow test code to be inserted."
+
+  nil)
+
 (defun static-dispatch? (name env)
   "Checks whether the generic function named NAME should be statically
    dispatched. This is the case if it is declared inline in the
@@ -1086,19 +1092,20 @@
 
   (with-slots (specializers lambda-list) method
     (let ((methods (methods-for-types gf-name specializers nil)))
-      (when methods
-	(multiple-value-bind (lambda-list *full-arg-list-form* ignore)
-	    (lambda-list->arg-list-form lambda-list)
+      (assert methods (methods) "No applicable methods for specializers: ~a" specializers)
 
-	  (let ((*method-functions* (copy-hash-table *method-functions*))
-		(name (method-function-name gf-name (method-spec method))))
+      (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
+	  (lambda-list->arg-list-form lambda-list)
 
-	    (remhash (cons gf-name (method-spec method)) *method-functions*)
-	    (pprint (hash-table-alist *method-functions*))
+	(let ((*method-functions* (copy-hash-table *method-functions*))
+	      (name (method-function-name gf-name (method-spec method))))
 
-	    `(defun ,name ,lambda-list
-	       (declare (ignorable ,@ignore))
-	       ,(inline-methods methods nil t))))))))
+	  (remhash (cons gf-name (method-spec method)) *method-functions*)
+
+	  `(defun ,name ,lambda-list
+	     (declare (ignorable ,@ignore))
+	     (static-method-function-test-hook)
+	     ,(inline-methods methods nil t)))))))
 
 (defun lambda-list->arg-list-form (lambda-list)
   "Construct a form which recreates an argument list from a lambda-list.
