@@ -45,6 +45,9 @@
 	      (when (eq dispatch-type :overload)
 		(collect `(progn ,@(make-static-overload-functions name))))
 
+	      (when (eq dispatch-type :inline)
+		(collect (make-remove-method-function-names name)))
+
 	      (collect `(enable-static-dispatch% ',name))))))))
 
 (defun enable-static-dispatch% (name)

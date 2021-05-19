@@ -66,6 +66,9 @@
 	    ,@(when (eq dispatch-type :overload)
 		(make-static-overload-functions name))
 
+	    ,@(when (eq dispatch-type :inline)
+		(list (make-remove-method-function-names name)))
+
 	    (sb-c:defknown ,name * * () :overwrite-fndb-silently t)
 
 	    ,@(reverse (mappend (curry #'make-transform name) methods))))))))

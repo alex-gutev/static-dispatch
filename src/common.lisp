@@ -1023,6 +1023,19 @@
 	     when (null (qualifier method))
 	     collect (make-method-function gf-name method))))))
 
+(defun make-remove-method-function-names (gf-name)
+  "Create forms which remove all function names from *METHOD-FUNCTIONS* for a generic function.
+
+   GF-NAME is the generic function name.
+
+   Returns a form which removes all method function names for the
+   given generic function."
+
+  (when-let (methods (gf-methods gf-name))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       ,@(loop for spec being the hash-key of methods
+	  collect `(remhash ',(cons gf-name spec) *method-functions*)))))
+
 (defun method-function-names (gf-name)
   "Generate function names for each generic function method.
 
