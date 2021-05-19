@@ -189,7 +189,8 @@
     `(sb-c:deftransform ,name (,lambda-list ,type-list * :policy (> speed safety) :node ,node)
        ,(format nil "Inline ~s method ~s" name specializers)
 
-       (let ((*full-arg-list-form* ,(make-reconstruct-arg-list lambda-list)))
+       (let ((*full-arg-list-form* ,(make-reconstruct-arg-list lambda-list))
+	     (*call-args* ,(make-reconstruct-static-arg-list lambda-list)))
 	 ,body))))
 
 (defun make-arglist-transform (name method args node body)
@@ -314,6 +315,55 @@
 	       (ematch key
 		 ((list* (list (list key var) _ _) rest)
 		  `(when ,var `(list* ,',key ,',var ,,(make-key rest))))
+
+		 (nil))))
+
+      (make-required required))))
+
+(defun make-reconstruct-static-arg-list (lambda-list)
+  "Generate a form that reconstructs an argument list.
+
+   The generated form is expected to be used inside a DEFTRANSFORM
+   where each lambda-list variable is bound to the compilation entity
+   or NIL if not provided.
+
+   LAMBDA-LIST is the lambda-list from which to reconstruct the
+   argument list.
+
+   Returns a form that when evaluated returns the static argument
+   list."
+
+  (multiple-value-bind (required optional rest key)
+      (parse-ordinary-lambda-list lambda-list)
+
+    (labels ((make-required (required)
+	       (ematch required
+		 ((list* var rest)
+		  `(cons ',var ,(make-required rest)))
+
+		 (nil
+		  (make-optional optional))))
+
+	     (make-optional (optional)
+	       (ematch optional
+		 ((list* (list var _ _) rest)
+		  `(when ,var (cons ',var ,(make-optional rest))))
+
+		 (nil
+		  (make-rest rest))))
+
+	     (make-rest (rest)
+	       (if rest
+		   `(loop
+		       repeat (length ,rest)
+		       for cons = ',rest then `(cdr ,cons)
+		       collect `(car ,cons))
+		   (make-key key)))
+
+	     (make-key (key)
+	       (ematch key
+		 ((list* (list (list key var) _ _) rest)
+		  `(when ,var (list* ',key ',var ,(make-key rest))))
 
 		 (nil))))
 

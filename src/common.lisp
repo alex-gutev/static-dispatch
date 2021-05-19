@@ -344,6 +344,9 @@
   "Bound to a from which constructs the full argument list for use as
    the default argument list in CALL-NEXT-METHOD.")
 
+(defvar *call-args* nil
+  "Bound to the argument list of the current generic function call.")
+
 (define-condition illegal-call-next-method-error (error)
   ((method-type
     :reader method-type
@@ -801,7 +804,10 @@
    Returns the function call form."
 
   (etypecase args
-    (list
+    (null
+     (cons function *call-args*))
+
+    (cons
      (cons function args))
 
     (symbol
