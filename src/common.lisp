@@ -53,13 +53,6 @@
     :documentation
     "The method's specializers")
 
-   (function-name
-    :initarg :function-name
-    :accessor function-name
-    :documentation
-    "Symbol naming a non-generic function which implements the
-     method.")
-
    (remove-on-redefine-p
     :initarg :remove-on-redefine-p
     :accessor remove-on-redefine-p
@@ -89,6 +82,17 @@
 
 (defvar *generic-function-table* (make-hash-table :test #'equal)
   "Hash table mapping generic functions to a list of methods.")
+
+(defvar *method-function-package* (make-package 'static-dispatch.method-functions)
+  "Package into which statically dispatched method function names are
+   interned.")
+
+(defvar *method-functions* (make-hash-table :test #'equal)
+  "Hash table mapping methods to the function implementing that method.
+
+   Each key is of the form (NAME QUALIFIER SPECIALIZERS) where NAME is
+   the name of the generic function, QUALIFIER is the method qualifier
+   and SPECIALIZERS is the argument type specializer list.")
 
 (defun gf-methods (gf-name)
   "Returns the method information for the generic function GF-NAME. A
@@ -156,6 +160,14 @@
 	    (remhash key methods))))
 
     (not-supported ())))
+
+(defun method-spec (method-info)
+  "Return the method specifier, i.e. the key used within the method table.
+
+   METHOD-INFO is the `METHOD-INFO' object of the method."
+
+  (with-slots (qualifier specializers) method-info
+    (list qualifier specializers)))
 
 
 ;;; DEFMETHOD and DEFGENERIC Macros
@@ -384,6 +396,29 @@
 	       (order-by-precedence precedence specializers))
 	      method))))
     (mapcar #'order-specializers methods)))
+
+(defun methods-for-types (name types &optional (remove-t t))
+  "Return the list of applicable methods for a given set of types.
+
+   NAME is the generic function name.
+
+   TYPES is the a list of type specifiers for the required arguments.
+
+   REMOVE-T is a flag, which if true, results in T methods being
+   removed if they match a T specifier.
+
+   Returns the list of applicable methods, `METHOD-INFO' objects, in
+   descending order of priority, with the method which should be
+   called first ordered first."
+
+  (let* ((gf (fdefinition name))
+	 (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
+	 (types (order-by-precedence precedence types)))
+    (-<> (aand (gf-methods name) (hash-table-alist it))
+	 (order-method-specializers precedence)
+	 (applicable-methods types remove-t)
+	 (sort-methods)
+	 (mapcar #'cdr <>))))
 
 (defun applicable-methods (methods types &optional (remove-t t))
   "Returns a list of all methods in METHODS which are applicable to
@@ -694,27 +729,30 @@
    CALL-NEXT-METHOD function."
 
   (destructuring-bind (&optional next-method &rest more-methods) next-methods
-    (with-gensyms (next-arg-var next-args)
-      `(flet ((call-next-method (&rest ,next-arg-var)
-		(let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
-		  (declare (ignorable ,next-args))
-		  ,(cond
-		     (next-method
-		      (make-primary-method-form
-		       next-method next-args more-methods
-		       :check-types check-types
-		       :last-form last-form))
+    (aif (method-function-name *current-gf* (method-spec method) nil)
+	 (make-method-function-call it args)
 
-		     (last-form (funcall last-form next-args))
+	 (with-gensyms (next-arg-var next-args)
+	   `(flet ((call-next-method (&rest ,next-arg-var)
+		     (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
+		       (declare (ignorable ,next-args))
+		       ,(cond
+			  (next-method
+			   (make-primary-method-form
+			    next-method next-args more-methods
+			    :check-types check-types
+			    :last-form last-form))
 
-		     (t
-		      `(apply #'no-next-method ',*current-gf* nil ,next-args)))))
+			  (last-form (funcall last-form next-args))
 
-	      (next-method-p ()
-		,(and (or next-method last-form) t)))
-	 (declare (ignorable #'call-next-method #'next-method-p))
+			  (t
+			   `(apply #'no-next-method ',*current-gf* nil ,next-args)))))
 
-	 ,(make-inline-method-body method args types check-types)))))
+		   (next-method-p ()
+		     ,(and (or next-method last-form) t)))
+	      (declare (ignorable #'call-next-method #'next-method-p))
+
+	      ,(make-inline-method-body method args types check-types))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -744,6 +782,24 @@
 		   (make-type-checks lambda-list specializers))
 
 	       ,@forms))))))
+
+(defun make-method-function-call (function args)
+  "Generate call to the function which implements a method.
+
+   FUNCTION is the name of the function which implements the method.
+
+   ARGS is the argument specifier of the method. Either a list
+   containing the argument forms, or a symbol naming the variable in
+   which the argument list is stored.
+
+   Returns the function call form."
+
+  (etypecase args
+    (list
+     (cons function args))
+
+    (symbol
+     `(apply #',function ,args))))
 
 (defun destructure-args (args lambda-list body)
   "Destructure the argument list, based on the lambda-list, if possible.
@@ -939,3 +995,186 @@
   "Creates a DECLARE IGNORABLE expression for the variables in VARS."
 
   `(declare (ignorable ,@vars)))
+
+
+;;; Generating Method Functions
+
+(defun make-static-overload-functions (gf-name)
+  "Generate the forms which define the method functions of a generic function.
+
+   Also generates function names for the methods and returns forms
+   which set those names in *METHOD-FUNCTIONS*. Thus this function
+   should be wrapped in a binding of a copy of *METHOD-FUNCTIONS*, in
+   order to prevent it's value from being modified merely by
+   macroexpansion.
+
+   GF-NAME is the name of the generic function.
+
+   Returns a list of forms which define the functions that implement
+   the methods."
+
+  `((eval-when (:compile-toplevel :load-toplevel :execute)
+      ,@(method-function-names gf-name))
+
+    ,@(when-let (methods (gf-methods gf-name))
+	(let ((*current-gf* gf-name))
+	  (loop
+	     for method being the hash-value of methods
+	     when (null (qualifier method))
+	     collect (make-method-function gf-name method))))))
+
+(defun method-function-names (gf-name)
+  "Generate function names for each generic function method.
+
+   Modifies *METHOD-FUNCTIONS*.
+
+   GF-NAME is the generic function name.
+
+   Returns a list of forms which store the generated names in
+   *METHOD-FUNCTIONS*."
+
+  (when-let (methods (gf-methods gf-name))
+    (loop
+       for spec being the hash-key of methods
+       for (qualifier) = spec
+       when (null qualifier)
+       collect
+	 `(setf (gethash '(,gf-name . ,spec) *method-functions*)
+		',(method-function-name gf-name spec)))))
+
+(defun method-function-name (gf-name method &optional (generate t))
+  "Return the function name for a generic function method.
+
+   GF-NAME is the generic function name.
+
+   METHOD is the method specifier (QUALIFIER SPECIALIZERS).
+
+   GENERATE is a flag which if true, results in a new name being
+   generated and stored in *METHOD-FUNCTIONS*.
+
+   Returns the function name."
+
+  (if generate
+      (ensure-gethash
+       (cons gf-name method) *method-functions*
+
+       (gentemp (symbol-name (block-name gf-name)) *method-function-package*))
+
+      (gethash (cons gf-name method) *method-functions*)))
+
+(defun make-method-function (gf-name method)
+  "Generate a DEFUN form implementing a generic function method.
+
+   GF-NAME is the name of the generic function.
+
+   METHOD is the `METHOD-INFO' object containing the method details.
+
+   Returns a DEFUN form for the method."
+
+  (with-slots (specializers lambda-list) method
+    (let ((methods (methods-for-types gf-name specializers nil)))
+      (when methods
+	(multiple-value-bind (lambda-list *full-arg-list-form* ignore)
+	    (lambda-list->arg-list-form lambda-list)
+
+	  (let ((*method-functions* (copy-hash-table *method-functions*))
+		(name (method-function-name gf-name (method-spec method))))
+
+	    (remhash (cons gf-name (method-spec method)) *method-functions*)
+	    (pprint (hash-table-alist *method-functions*))
+
+	    `(defun ,name ,lambda-list
+	       (declare (ignorable ,@ignore))
+	       ,(inline-methods methods nil t))))))))
+
+(defun lambda-list->arg-list-form (lambda-list)
+  "Construct a form which recreates an argument list from a lambda-list.
+
+   LAMBDA-LIST is an ordinary lambda-list
+
+   Returns three values:
+
+     1. The new lambda-list with supplied-p variables added where
+        necessary.
+
+     2. The form which recreates the argument list.
+
+     3. A list of variables which should be declared IGNORABLE."
+
+  (let (sp-vars)
+    (labels ((add-sp (spec)
+	       (ematch spec
+		 ((list var init nil)
+		  (let ((sp (gensym)))
+		    (push sp sp-vars)
+		    (list var init sp)))
+
+		 ((list var init sp)
+		  (list var init sp)))))
+
+      (multiple-value-bind (required optional rest key allow-other-keys aux keyp)
+	  (parse-ordinary-lambda-list lambda-list)
+
+	(let* ((optional (mapcar #'add-sp optional))
+	       (rest (or rest (if allow-other-keys (gensym "REST"))))
+	       (key (mapcar #'add-sp key))
+	       (lambda-list
+		(unparse-lambda-list required optional rest key allow-other-keys aux keyp)))
+
+	  (labels ((make-required (required)
+		     (ematch required
+		       ((list* var rest)
+			`(cons ,var ,(make-required rest)))
+
+		       (nil
+			(make-optional optional))))
+
+		   (make-optional (optional)
+		     (ematch optional
+		       ((list* (list var _ sp) rest)
+			`(if ,sp (cons ,var ,(make-optional rest))))
+
+		       (nil
+			(make-rest rest))))
+
+		   (make-rest (rest)
+		     (or rest (make-key key)))
+
+		   (make-key (key)
+		     (ematch key
+		       ((list* (list (list keyword var) _ sp) rest)
+			`(if ,sp (list* ',keyword ,var ,(make-key rest))))
+
+		       (nil nil))))
+
+	    (values
+	     lambda-list
+	     (make-required required)
+	     sp-vars)))))))
+
+(defun unparse-lambda-list (required optional rest key allow-other-keys aux keyp)
+  "Construct a lambda-list out of its components.
+
+   REQUIRED is the list of required arguments.
+
+   OPTIONAL is the list of optional argument specifiers.
+
+   REST is the rest argument, or NIL if there is no rest argument.
+
+   ALLOW-OTHER-KEYS is a flag for whether &ALLOW-OTHER-KEYS should be
+   present.
+
+   AUX is the list of auxiliary variable specifiers.
+
+   KEYP is a flag for whether &key should be present.
+
+   Returns the lambda list."
+
+  (append
+   required
+   (when optional (list* '&optional optional))
+   (when rest (list '&rest rest))
+   (when keyp '(&key))
+   key
+   (when allow-other-keys '(&allow-other-keys))
+   (when aux (list* '&aux aux))))

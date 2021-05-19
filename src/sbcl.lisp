@@ -33,33 +33,42 @@
 (defmacro enable-static-dispatch (&rest names)
   "Enable static dispatching for generic functions with names NAMES."
 
-  `(progn ,@(mapcar (curry #'list 'enable-static-dispatch%) names)))
+  (let ((*method-functions* (copy-hash-table *method-functions*)))
+    `(progn ,@(mapcar #'make-enable-static-dispatch names))))
 
-(defmacro enable-static-dispatch% (name)
-  (labels ((sort-methods (methods)
-	     (sort methods #'method< :key #'car))
+(defun make-enable-static-dispatch (name)
+  (ematch name
+    ((or (list (and (or :inline :overload) dispatch-type)
+	       name)
+	 name)
 
-	   (method< (m1 m2)
-	     (ematch* (m1 m2)
-	       (((list _ s1)
-		 (list _ s2))
+     (labels ((sort-methods (methods)
+		(sort methods #'method< :key #'car))
 
-		(specializer< s1 s2)))))
+	      (method< (m1 m2)
+		(ematch* (m1 m2)
+		  (((list _ s1)
+		    (list _ s2))
 
-    (let* ((gf (fdefinition name))
-	   (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	   (methods (-<> (aand (gf-methods name) (hash-table-alist it))
-			 (order-method-specializers precedence)
-			 (sort-methods)
-			 (remove-duplicates :key #'cadar :test #'equal)
-			 (mapcar #'cdr <>))))
-      (unless methods
-	(simple-style-warning "Could not enable static dispatch for: ~a. No methods found." name))
+		   (specializer< s1 s2)))))
 
-      `(progn
-	 (sb-c:defknown ,name * * () :overwrite-fndb-silently t)
+       (let* ((gf (fdefinition name))
+	      (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
+	      (methods (-<> (aand (gf-methods name) (hash-table-alist it))
+			    (order-method-specializers precedence)
+			    (sort-methods)
+			    (remove-duplicates :key #'cadar :test #'equal)
+			    (mapcar #'cdr <>))))
+	 (unless methods
+	   (simple-style-warning "Could not enable static dispatch for: ~a. No methods found." name))
 
-	 ,@(reverse (mappend (curry #'make-transform name) methods))))))
+	 `(progn
+	    ,@(when (eq dispatch-type :overload)
+		(make-static-overload-functions name))
+
+	    (sb-c:defknown ,name * * () :overwrite-fndb-silently t)
+
+	    ,@(reverse (mappend (curry #'make-transform name) methods))))))))
 
 (defun should-transform? (node specializers)
   "Checks whether the transform should be applied for a given compilation NODE.

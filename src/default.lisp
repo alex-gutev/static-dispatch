@@ -33,9 +33,19 @@
 (defmacro enable-static-dispatch (&rest names)
   "Enable static dispatching for generic functions with names NAMES."
 
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     ,@(loop for name in names
-	  collect `(enable-static-dispatch% ',name))))
+  (let ((*method-functions* (copy-hash-table *method-functions*)))
+    `(eval-when (:compile-toplevel :load-toplevel :execute)
+       ,@(iter
+	   (for name in names)
+	   (ematch name
+	     ((or (list (and (or :inline :overload) dispatch-type)
+			name)
+		  name)
+
+	      (when (eq dispatch-type :overload)
+		(collect `(progn ,@(make-static-overload-functions name))))
+
+	      (collect `(enable-static-dispatch% ',name))))))))
 
 (defun enable-static-dispatch% (name)
   "Enable static dispatching for the generic function NAME."
