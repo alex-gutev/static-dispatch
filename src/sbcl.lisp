@@ -152,7 +152,8 @@
 
 	       (when type-list
 		 (->> (make-default-transform-body name args specializers node)
-		      (make-arglist-transform name method args node))))))))
+		      (make-arglist-transform name method args node)
+		      list)))))))
 
 (defun make-destructure-transform (name method type-list node body)
   "Generate a DEFTRANSFORM with a specific lambda list.
