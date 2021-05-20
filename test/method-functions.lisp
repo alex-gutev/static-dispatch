@@ -65,11 +65,11 @@
 ;; Enable static dispatch with overloading rather than inlining
 
 (enable-static-dispatch
- (:overload foo)
- (:overload my-eq)
- (:overload foo2)
- (:overload bar)
- (:overload baz))
+ (:function foo)
+ (:function my-eq)
+ (:function foo2)
+ (:function bar)
+ (:function baz))
 
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))

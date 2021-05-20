@@ -38,7 +38,7 @@
 
 (defun make-enable-static-dispatch (name)
   (ematch name
-    ((or (list (and (or :inline :overload) dispatch-type)
+    ((or (list (and (or :inline :function) dispatch-type)
 	       name)
 	 name)
 
@@ -63,7 +63,7 @@
 	   (simple-style-warning "Could not enable static dispatch for: ~a. No methods found." name))
 
 	 `(progn
-	    ,@(when (eq dispatch-type :overload)
+	    ,@(when (eq dispatch-type :function)
 		(make-static-overload-functions name))
 
 	    ,@(when (eq dispatch-type :inline)

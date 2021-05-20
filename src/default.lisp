@@ -38,11 +38,11 @@
        ,@(iter
 	   (for name in names)
 	   (ematch name
-	     ((or (list (and (or :inline :overload) dispatch-type)
+	     ((or (list (and (or :inline :function) dispatch-type)
 			name)
 		  name)
 
-	      (when (eq dispatch-type :overload)
+	      (when (eq dispatch-type :function)
 		(collect `(progn ,@(make-static-overload-functions name))))
 
 	      (when (eq dispatch-type :inline)
