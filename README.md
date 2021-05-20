@@ -4,7 +4,7 @@ Static dispatch is a library, inspired by
 [inlined-generic-function](https://github.com/guicho271828/inlined-generic-function),
 which allows standard Common Lisp generic function dispatch to be
 performed statically (at compile time) rather than dynamically
-(runtime). This is similar to what is known as "overloading" in
+(at runtime). This is similar to what is known as "overloading" in
 languages such as C++ and Java.
 
 The purpose of static dispatch is to provide an optimization in cases
@@ -15,54 +15,76 @@ comparison function. Currently generic functions are considered far
 too slow to implement generic arithmetic and comparison operations
 when used heavily in numeric code.
 
-## How it works
-
-The shadowed `DEFMETHOD` macro stores the body of the method in a
-global variable which contains a hash-table mapping generic functions
-to their methods.
-
-A compiler macro function is added to the generic function which
-determines the types of the arguments and replaces the function call
-form with the body of the most specific applicable method. If the
-types cannot be determined, or there isn't enough type information the
-generic function call is left as is. Thus in order to choose the
-appropriate method at compile-time rather than runtime, the types of
-the arguments must be deduced at compile time.
-
-
 ## Usage
 
-The package `STATIC-DISPATCH-CL` is provided which contains all
-symbols in the `COMMON-LISP` package and the shadowed `DEFMETHOD`
-macro. This package should be used/imported instead of `COMMON-LISP`
-as besides exporting the shadowed `DEFMETHOD` and `DEFGENERIC`
-symbols, it also exports all symbols shadowed by the
-`CLOSER-COMMON-LISP` package (from
-[closer-mop](https://github.com/pcostanza/closer-mop)) which are
-necessary for closer-mop to function correctly.
+Generic functions and methods are defined as usual, however using
+`DEFGENERIC` and `DEFMETHOD` from the `STATIC-DISPATCH-CL` package,
+rather than the `CL` package. By default, generic functions are
+dispatched dynamically, and are identical to standard Common Lisp
+generic functions.
 
-Generic functions and methods are defined as usual, using `DEFGENERIC`
-and `DEFMETHOD`. By default, generic functions are dispatched dynamically, and are
-identical to standard Common Lisp generic functions.
+The standard method combination is supported, including `:BEFORE`,
+`:AFTER` and `:AROUND` methods, as well as `CALL-NEXT-METHOD` and
+`NEXT-METHOD-P`. User-defined method combinations are not
+supported. You can still define a generic function with a user-defined
+method combination in your code, however it will not be statically
+dispatched.
 
-To enable static dispatching for a generic function the following form
-has to be inserted after the definition of the generic function and
-its methods:
+**NOTE:** The package `STATIC-DISPATCH-CL` exports all symbols from the `CL`
+package as well as the symbols in the `STATIC-DISPATCH` package,
+including the shadowed `DEFMETHOD` and `DEFGENERIC` macros. Use this
+package instead of `CL`.
+
+### Enable Static Dispatch
+
+To enable static dispatching for a generic function the following
+macro form has to be inserted after the definition of the generic
+function and its methods:
 
 ```lisp
-(enable-static-dispatch <generic function name>)
+(enable-static-dispatch &rest names)
 ```
 
-Substitute `<generic function name>` with the name of the generic
-function. The form accepts any number of arguments each interpreted as
-the name of a generic function.
+where each item in `names` is the name of a generic function, for
+which to enable static dispatching. The name of a function may also be
+of the following forms which control how functions are statically
+dispatched:
 
-This allows the generic function to be statically dispatched but to
-actually result in the generic function being statically dispatched,
-an `OPTIMIZE` declaration, with a `SPEED` level greater than the
-`SAFETY` level, and an `INLINE` declaration for the generic function
-need to be in place in the lexical environment of the generic function
-call.
+* `(:INLINE name)` - Calls to `name` are replaced with the body of the
+  most applicable method(s) inline.
+  
+* `(:FUNCTION name)` - Calls to `name` are replaced with a call to an
+  ordinary function which implements the most applicable method.
+  
+If only the name is given it's equivalent to `(:INLINE name)`. The
+only difference between this form and `(:INLINE name)` is that if
+static dispatching is already enabled for the function, the default
+form leaves the static dispatching mode as is whereas `(:INLINE name)`
+changes it to `:INLINE`.
+
+**NOTE:** The `:FUNCTION` static dispatching mode is most useful, when
+you have large methods and you want true overloading, as is found in
+languages such as Java and C++. The `:INLINE` mode will likely result
+in faster, however also larger code.
+
+**NOTE:** Information about the generic function's methods must be
+available at the time the `ENABLE-STATIC-DISPATCH` macro is
+expanded. Furthermore only the methods defined till the point of its
+expansion will be considered for static dispatching. Thus it's best to
+place an `ENABLE-STATIC-DISPATCH` form in a separate file which is
+loaded after the file(s) containing the definition of the generic
+function and it's methods.
+
+### Static Dispatching
+
+To statically dispatch a generic function, an `OPTIMIZE` declaration,
+with a `SPEED` level greater than the `SAFETY` level, and an `INLINE`
+declaration for the generic function need to be in place in the
+lexical environment of the generic function call.
+
+**NOTE:** Static dispatching must have been enabled for the generic
+function, using `ENABLE-STATIC-DISPATCH`, prior to the generic
+function call, in order for the declarations to have any effect.
 
 **Example:**
 
@@ -74,7 +96,7 @@ call.
 ```
 
 
-In order for the appropriate method to be chosen at compile-time the
+In order for the applicable method to be chosen at compile-time, the
 types of the arguments to the generic function call must be known.
 
 On SBCL this is dependent on whether the compiler can determine the
@@ -96,7 +118,7 @@ The types of the following special forms can also be determined:
 
 If the types of the arguments cannot be determined, no method is
 chosen and the generic function call form is left as is, which
-fallbacks to the standard dynamic dispatch.
+falls back to the standard dynamic dispatch.
 
 Both `EQL` and class specializers are supported. `EQL` methods will
 only be chosen statically if the argument is one of the following and
@@ -111,20 +133,6 @@ is `EQL` to the specializer's value.
 `EQL` to the specializer's value, it will not be chosen unless it has
 a `TYPE (EQL ...)` declaration.
 
-`CALL-NEXT-METHOD` and `NEXT-METHOD-P` are supported fully.
-
-The standard method combination is supported, along with `:BEFORE`,
-`:AFTER` and `:AROUND` methods, however user-defined method
-combinations are not supported. You can still use a generic function
-with a user-defined method combination in your code however it will
-not be statically dispatched.
-
-**Note:** In order for type and inline declarations to be made
-available, to the compiler macro, consistently across implementations
-the `ENABLE-HOOK` function has to be called at some point, see
-https://github.com/alex-gutev/cl-environments#documentation for more
-information.
-
 ### Prevent Static Dispatching
 
 **NOTE:** On SBCL all generic functions, for which static dispatch is
@@ -134,7 +142,7 @@ regardless of whether the function is declared inline or not, if the
 prevent a function from being statically dispatched in such cases,
 declare it `NOTINLINE`.
 
-**Example:***
+**Example:**
 
 ```lisp
 (locally (declare (optimize speed)
@@ -220,7 +228,7 @@ If the optimize declaration is changed to `(optimize (speed 3) (safety
 
 ### Interaction with other Compiler Macros
 
-By default Static-Dispatch does not add a compiler macro to a generic
+By default static-dispatch does not add a compiler macro to a generic
 function which already has a compiler macro function. To statically
 dispatch such functions the `STATIC-DISPATCH` function has to be
 called manually from the compiler macro.
@@ -246,10 +254,11 @@ Statically dispatched generic functions are dispatched based on the
 declared types of the arguments at compile-time. The declared type may
 differ from the actual runtime type of the argument, which may result
 in a different method being called when statically dispatched from
-when the generic function is dynamically dispatched. A useful analogy
-is that dynamically dispatched generic functions have the semantics of
-C++ virtual methods whereas statically dispatched functions have the
-semantics of overloaded functions/methods in C++ and Java.
+when the generic function is dynamically dispatched. An intuitive
+analogy is that dynamically dispatched generic functions have the
+semantics of C++ virtual methods whereas statically dispatched
+functions have the semantics of overloaded functions/methods in C++
+and Java.
 
 Consider the following methods:
 
@@ -283,7 +292,7 @@ actually bound to an integer value, with dynamic dispatch, when the
 It's also possible that a particular implementation may change the
 declared type of a variable to a subtype if it can be deduced to be of
 that subtype, so in this example the declaration `(TYPE NUMBER X)`
-maybe changed to `(TYPE INTEGER X)` by the implementation. As a result
+may be changed to `(TYPE INTEGER X)` by the implementation. As a result
 it's not even possible to rely on the declaration forcing the method
 specialized on `NUMBER` to be called. Therefore you should only use
 statically dispatched functions for optimization where each method has
@@ -301,100 +310,57 @@ static-dispatch cannot predict what methods will be added or removed,
 therefore adding or removing methods will not have the desired effect
 on statically dispatched generic function calls.
 
-
-## Differences from INLINED-GENERIC-FUNCTION
-
-Inlined-Generic-Function uses a custom generic function metaclass
-`INLINED-GENERIC-FUNCTION` which stores the method's body in order for
-it to be inlined by the compiler-macro. Whilst this approach is more
-robust than shadowing `DEFMETHOD` in order to store the method body in
-a global variable, as it will be able to inline methods added by other
-means besides `DEFMETHOD`, the metaclass is changed from the standard
-generic function metaclass which in turn prevents certain
-optimizations, of the dynamic generic function dispatch, from being
-performed by the compiler. This results in slower execution speed, as
-shown in
-[https://github.com/guicho271828/inlined-generic-function#user-content-result].
-
-Static-Dispatch does not use a custom generic function metaclass thus
-generic functions are identical to standard Common Lisp generic
-functions, and hence the usual optimizations are performed, when
-dynamically dispatched. This only matters when generic functions are
-not inlined, however the goal of this library is to provide generic
-function inlining as an optimization for cases where it is known that
-standard dynamic dispatch is too slow, not to provide inlining by
-default.
-
-In Static-Dispatch the generic function call form is directly replaced
-with the body of the most-specific applicable method, whereas in
-Inlined-Generic-Function the form is replaced with a `MATCH` form
-which contains a pattern-matching clause for each method that checks
-whether the types of the arguments match the method's specializer list
-and evaluates the body of the method. An advantage of the approach
-taken by Inlined-Generic-Function is that the method bodies can be
-inlined even if the arguments are more complicated expressions than
-variables and `THE` forms. However this relies on the compiler to
-remove the clauses corresponding to the non-applicable methods
-otherwise the result is that dynamic dispatch is still performed,
-however is performed inline and is potentially slower than the
-built-in dynamic dispatch of CLOS. SBCL is capable of removing
-branches, corresponding to non-applicable methods, however most other
-compilers (including CCL) are not.
-
-Static-Dispatch can handle full lambda-lists with all lambda-list
-keywords. Inlined-Generic-Function cannot, as of yet (November 2018),
-handle lambda-lists containing anything but required arguments.
-
-Static-Dispatch does not yet support user-defined method combinations,
-whereas Inlined-Generic-Function does.
-
 ## Dependencies
 
 ### Main Dependencies
 
-[closer-mop](https://github.com/pcostanza/closer-mop) - Required to
-obtain information about generic-function methods, namely the argument
-precedence order and class precedence list.
+* [closer-mop](https://github.com/pcostanza/closer-mop) - Required to
+  obtain information about generic-function methods, namely the
+  argument precedence order and class precedence list.
 
-[cl-environments](https://github.com/alex-gutev/cl-environments) -
-Used to extract declaration information from environments, on any
-implementation. Requires that the `ENABLE-HOOK` function (exported
-from the `STATIC-DISPATCH-CL` package) is called.
+* [cl-environments](https://github.com/alex-gutev/cl-environments) -
+  Used to extract declaration information from environments, on any
+  implementation.
 
 
 ### Other Dependencies
 
-[agutil](https://github.com/alex-gutev/agutil),
-[alexandria](https://gitlab.common-lisp.net/alexandria/alexandria),
-[anaphora](https://github.com/tokenrove/anaphora),
-[trivia](https://github.com/guicho271828/trivia),
-[iterate](https://gitlab.common-lisp.net/iterate/iterate),
-[arrows](https://gitlab.com/Harleqin/arrows).
+* [agutil](https://github.com/alex-gutev/agutil)
+* [alexandria](https://gitlab.common-lisp.net/alexandria/alexandria)
+* [anaphora](https://github.com/tokenrove/anaphora)
+* [trivia](https://github.com/guicho271828/trivia)
+* [iterate](https://gitlab.common-lisp.net/iterate/iterate)
+* [arrows](https://gitlab.com/Harleqin/arrows)
 
 
 ## Status
 
-Supports class and EQL specializers.
+Supports class and EQL specializers, CALL-NEXT-METHOD, NEXT-METHOD-P
+and auxiliary methods.
 
 Does not support user-defined method combinations.
 
-Tested on: CCL, SBCL, CLISP, ECL, CMUCL and ABCL.
+Tested on: CCL, SBCL, Clisp, ECL, CMUCL and ABCL.
 
-Currently generic functions can be statically dispatched successfully
-on SBCL and CCL without any workarounds. On the remaining listed
-implementations, generic functions can only be statically dispatched
-if the
-[`CL-ENVIRONMENTS:ENABLE-HOOK`](https://github.com/alex-gutev/cl-environments#enable-hook)
-function is called prior to compiling the source file, where static
-dispatch should be performed.
+Tests pass (static dispatch is successful) on: SBCL, CCL, Clisp and
+ECL.
+
+Tests fail (falls back to dynamic dispatch) on: CMUCL and ABCL.
+
+Whether static-dispatching is successful depends on whether the
+cl-environments library is able to extract the type information from
+the environment. Where the CLTL2 API is natively supported (SBCL, CCL,
+CMUCL, LispWorks and Allegro) the type information can be accessed
+without any workarounds. On the remaining implementations the type
+information can be extracted in most cases however workarounds are
+required for some edge cases, see [CL-ENVIRONMENTS: Ensuring Code
+Walking](https://alex-gutev.github.io/cl-environments/#ensuring_code_walking).
 
 ### Known Issues:
 
- * On ABCL: methods are not inlined, if the types of the arguments are
-   declared, due to the the lexical environment not being passed to
-   compiler-macros. Methods can only be inlined on ABCL by surrounding
-   the arguments in THE forms and if the generic function is declared
-   inline globally. See
+ * Static dispatch does not work on ABCL. Code still runs correctly
+   but falls back to dynamic dispatch. This is due to ABCL not passing
+   the lexical environment to compiler-macros. See
    https://github.com/alex-gutev/cl-environments#issues for more
    information.
 
@@ -405,9 +371,6 @@ dispatch should be performed.
 * Removal of `CALL-NEXT-METHOD` and `NEXT-METHOD-P` if not used by the
   method.
 * Optimization of `CALL-NEXT-METHOD`, where it is inlined in some cases.
-* Proper static dispatch, where the generic function call is replaced
-  with a call to the actual method function rather than with the body
-  of the method inline.
 * Method return type declarations.
 * Support for other method combinations.
 * Enhance generic functions to allow for specialization on all types
