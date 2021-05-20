@@ -707,7 +707,10 @@
 
   (destructuring-bind (&optional next-method &rest more-methods) next-methods
     (list*
-     (make-inline-method-body method args types check-types)
+     (aif (method-function-name *current-gf* (method-spec method) nil)
+	  (make-method-function-call it args)
+	  (make-inline-method-body method args types check-types))
+
      (when next-method
        (make-aux-method-body next-method args more-methods
 			     :check-types check-types
@@ -738,30 +741,45 @@
    CALL-NEXT-METHOD function."
 
   (destructuring-bind (&optional next-method &rest more-methods) next-methods
-    (aif (method-function-name *current-gf* (method-spec method) nil)
-	 (make-method-function-call it args)
+    (or (primary-method-function-call method args)
 
-	 (with-gensyms (next-arg-var next-args)
-	   `(flet ((call-next-method (&rest ,next-arg-var)
-		     (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
-		       (declare (ignorable ,next-args))
-		       ,(cond
-			  (next-method
-			   (make-primary-method-form
-			    next-method next-args more-methods
-			    :check-types check-types
-			    :last-form last-form))
+	(with-gensyms (next-arg-var next-args)
+	  `(flet ((call-next-method (&rest ,next-arg-var)
+		    (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
+		      (declare (ignorable ,next-args))
+		      ,(cond
+			 (next-method
+			  (make-primary-method-form
+			   next-method next-args more-methods
+			   :check-types check-types
+			   :last-form last-form))
 
-			  (last-form (funcall last-form next-args))
+			 (last-form (funcall last-form next-args))
 
-			  (t
-			   `(apply #'no-next-method ',*current-gf* nil ,next-args)))))
+			 (t
+			  `(apply #'no-next-method ',*current-gf* nil ,next-args)))))
 
-		   (next-method-p ()
-		     ,(and (or next-method last-form) t)))
-	      (declare (ignorable #'call-next-method #'next-method-p))
+		  (next-method-p ()
+		    ,(and (or next-method last-form) t)))
+	     (declare (ignorable #'call-next-method #'next-method-p))
 
-	      ,(make-inline-method-body method args types check-types))))))
+	     ,(make-inline-method-body method args types check-types))))))
+
+(defun primary-method-function-call (method args)
+  "Return a FORM which calls the primary method function if any.
+
+   METHOD is the method, the function of which, to call.
+
+   ARGS is the method argument list.
+
+   Returns a form which calls the method function of the primary
+   method. If METHOD is not a primary method, but an :AROUND method,
+   or it has no method function, NIL is returned."
+
+  (with-slots (qualifier specializers) method
+    (unless qualifier
+      (when-let (name (method-function-name *current-gf* (method-spec method) nil))
+	(make-method-function-call name args)))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -1032,8 +1050,8 @@
 	(let ((*current-gf* gf-name))
 	  (loop
 	     for method being the hash-value of methods
-	     when (null (qualifier method))
-	     collect (make-method-function gf-name method))))))
+	     for fn = (make-method-function gf-name method)
+	     when fn collect fn)))))
 
 (defun make-remove-method-function-names (gf-name)
   "Create forms which remove all function names from *METHOD-FUNCTIONS* for a generic function.
@@ -1061,8 +1079,6 @@
   (when-let (methods (gf-methods gf-name))
     (loop
        for spec being the hash-key of methods
-       for (qualifier) = spec
-       when (null qualifier)
        collect
 	 `(setf (gethash '(,gf-name . ,spec) *method-functions*)
 		',(method-function-name gf-name spec)))))
@@ -1082,7 +1098,6 @@
   (if generate
       (ensure-gethash
        (cons gf-name method) *method-functions*
-
        (gentemp (symbol-name (block-name gf-name)) *method-function-package*))
 
       (gethash (cons gf-name method) *method-functions*)))
@@ -1096,8 +1111,58 @@
 
    Returns a DEFUN form for the method."
 
-  (with-slots (specializers lambda-list) method
-    (let ((methods (methods-for-types gf-name specializers nil)))
+  (with-slots (qualifier specializers) method
+    (ecase qualifier
+      ((:before :after)
+       (make-aux-method-function gf-name method))
+
+      (:around
+       (make-around-method-function gf-name method))
+
+      ((nil)
+       (make-primary-method-function gf-name method)))))
+
+(defun make-aux-method-function (gf-name method)
+  "Generate a BEFORE/AFTER method function definition.
+
+   GF-NAME is the name of the generic function.
+
+   METHOD is the `METHOD-INFO' object of the method for which to
+   generate a method function definition.
+
+   Returns a DEFUN form, for the method function."
+
+  (with-slots (qualifier lambda-list) method
+    (assert (member qualifier '(:before :after)) (qualifier) "MAKE-AUX-METHOD-FUNCTION called on a non-BEFORE/AFTER method: ~a" qualifier)
+
+    (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
+	(lambda-list->arg-list-form lambda-list)
+
+      (let ((*method-functions* (copy-hash-table *method-functions*))
+	    (name (method-function-name gf-name (method-spec method))))
+
+	(remhash (cons gf-name (method-spec method)) *method-functions*)
+
+	`(defun ,name ,lambda-list
+	   (declare (ignorable ,@ignore))
+	   (static-method-function-test-hook)
+	   ,(make-aux-methods qualifier method nil nil :check-types t))))))
+
+(defun make-primary-method-function (gf-name method)
+  "Generate a primary method function definition.
+
+   GF-NAME is the name of the generic function.
+
+   METHOD is the `METHOD-INFO' object of the method for which to
+   generate a method function definition.
+
+   Returns a DEFUN form, for the method function."
+
+  (with-slots (qualifier specializers lambda-list) method
+    (assert (null qualifier) (qualifier) "MAKE-PRIMARY-METHOD-FUNCTION called on a non-primary method: ~a" qualifier)
+
+    (let ((methods (-<> (methods-for-types gf-name specializers nil)
+			(remove nil <> :key #'qualifier :test-not #'eql))))
       (assert methods (methods) "No applicable methods for specializers: ~a" specializers)
 
       (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
@@ -1112,6 +1177,40 @@
 	     (declare (ignorable ,@ignore))
 	     (static-method-function-test-hook)
 	     ,(inline-methods methods nil t)))))))
+
+(defun make-around-method-function (gf-name method)
+  "Generate an around method function definition form.
+
+   GF-NAME is the name of the generic function.
+
+   METHOD is the `METHOD-INFO' object of the method for which to
+   generate a method function definition.
+
+   Returns a DEFUN form, for the method function."
+
+  (with-slots (qualifier specializers lambda-list) method
+    (assert (eq qualifier :around) (qualifier) "MAKE-AROUND-METHOD-FUNCTION called on a non-AROUND method: ~a" qualifier)
+
+    (let ((name (method-function-name gf-name (list qualifier specializers))))
+      (with-gensyms (next-method next-arg-var next-args)
+
+	(multiple-value-bind (lambda-list *full-arg-list-form* ignore)
+	    (lambda-list->arg-list-form lambda-list)
+
+	  `(defun ,name (,next-method ,@lambda-list)
+	     (declare (ignorable ,@ignore))
+	     (static-method-function-test-hook)
+
+	     (flet ((call-next-method (&rest ,next-arg-var)
+		      (let ((,next-args (or ,next-arg-var ,(next-method-default-args nil))))
+			(if ,next-method
+			    (apply ,next-method ,next-args)
+			    (apply #'no-next-method ',gf-name ,next-args))))
+
+		    (next-method-p ()
+		      (and ,next-method t)))
+
+	       ,(make-inline-method-body method nil nil t))))))))
 
 (defun lambda-list->arg-list-form (lambda-list)
   "Construct a form which recreates an argument list from a lambda-list.
