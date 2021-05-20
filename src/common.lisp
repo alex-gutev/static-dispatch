@@ -763,7 +763,8 @@
 		    ,(and (or next-method last-form) t)))
 	     (declare (ignorable #'call-next-method #'next-method-p))
 
-	     ,(make-inline-method-body method args types check-types))))))
+	     ,(or (around-method-function-call method args)
+		  (make-inline-method-body method args types check-types)))))))
 
 (defun primary-method-function-call (method args)
   "Return a FORM which calls the primary method function if any.
@@ -780,6 +781,22 @@
     (unless qualifier
       (when-let (name (method-function-name *current-gf* (method-spec method) nil))
 	(make-method-function-call name args)))))
+
+(defun around-method-function-call (method args)
+  "Return a FORM which calls the :AROUND method if any.
+
+   METHOD is the method, the function of which, to call.
+
+   ARGS is the method argument list.
+
+   Returns a form calls the method of the around method. If METHOD is
+   not an AROUND method, or it has no method function, NIL is
+   returned."
+
+  (with-slots (qualifier specializers) method
+    (when (eq qualifier :around)
+      (when-let (name (method-function-name *current-gf* (method-spec method) nil))
+	(make-method-function-call name args '(#'call-next-method #'next-method-p))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -810,7 +827,7 @@
 
 	       ,@forms))))))
 
-(defun make-method-function-call (function args)
+(defun make-method-function-call (function args &optional extra)
   "Generate call to the function which implements a method.
 
    FUNCTION is the name of the function which implements the method.
@@ -819,17 +836,19 @@
    containing the argument forms, or a symbol naming the variable in
    which the argument list is stored.
 
+   EXTRA is a list of extra arguments to pass before ARGS.
+
    Returns the function call form."
 
   (etypecase args
     (null
-     (cons function *call-args*))
+     `(,function ,@extra ,@*call-args*))
 
     (cons
-     (cons function args))
+     `(,function ,@extra ,@args))
 
     (symbol
-     `(apply #',function ,args))))
+     `(apply #',function ,@extra ,args))))
 
 (defun destructure-args (args lambda-list body)
   "Destructure the argument list, based on the lambda-list, if possible.
@@ -1192,23 +1211,21 @@
     (assert (eq qualifier :around) (qualifier) "MAKE-AROUND-METHOD-FUNCTION called on a non-AROUND method: ~a" qualifier)
 
     (let ((name (method-function-name gf-name (list qualifier specializers))))
-      (with-gensyms (next-method next-arg-var next-args)
+      (with-gensyms (call-next-method next-method-p next-arg-var)
 
 	(multiple-value-bind (lambda-list *full-arg-list-form* ignore)
 	    (lambda-list->arg-list-form lambda-list)
 
-	  `(defun ,name (,next-method ,@lambda-list)
+	  `(defun ,name (,call-next-method ,next-method-p ,@lambda-list)
 	     (declare (ignorable ,@ignore))
 	     (static-method-function-test-hook)
 
 	     (flet ((call-next-method (&rest ,next-arg-var)
-		      (let ((,next-args (or ,next-arg-var ,(next-method-default-args nil))))
-			(if ,next-method
-			    (apply ,next-method ,next-args)
-			    (apply #'no-next-method ',gf-name ,next-args))))
+		      (apply ,call-next-method ,next-arg-var))
 
 		    (next-method-p ()
-		      (and ,next-method t)))
+		      (funcall ,next-method-p)))
+	       (declare (ignorable #'call-next-method #'next-method-p))
 
 	       ,(make-inline-method-body method nil nil t))))))))
 
