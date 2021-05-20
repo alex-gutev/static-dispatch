@@ -35,6 +35,7 @@
 		((:file "package")
 		 (:file "util")
 		 (:file "common")
+		 (:file "method-functions")
 		 (:file "default" :if-feature (:not :sbcl))
 		 (:file "sbcl" :if-feature :sbcl))))
 
