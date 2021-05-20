@@ -89,5 +89,6 @@
 
        (is (string= ,expected ,output)
 	   "Expected ~a to print:~%~a~%Got:~%~a"
+	   ',form
 	   ,expected
 	   ,output))))
