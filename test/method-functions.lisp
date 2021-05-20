@@ -66,9 +66,10 @@
 
 (enable-static-dispatch
  (:overload foo)
- (:overload my-eq))
-
-
+ (:overload my-eq)
+ (:overload foo2)
+ (:overload bar)
+ (:overload baz))
 
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
@@ -150,4 +151,93 @@
 
     (test-dispatch (foo 'x 0) '(other nil (x 0)))
     (test-dispatch (foo (pass-through "hello") +a-constant+)
-		   (list 'other nil (list "hello" +a-constant+)))))
+		   (list 'other nil (list "hello" +a-constant+)))
+
+    (test-dispatch (foo 'x 'y :default-type 'default)
+		   (list 'default nil (list 'x 'y)))))
+
+
+;;; Test Auxiliary methods
+
+(test (around-methods :compile-at :run-time)
+  "Test static dispatching of :AROUND methods"
+
+  (locally (declare (inline my-eq)
+		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
+
+    (test-dispatch (my-eq 1/2 0.5) '(:around-number t))
+    (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)))
+    (test-dispatch (my-eq "x" 'x) nil)
+    (test-dispatch (my-eq 133 133) :special-number)))
+
+(test (before-after-methods :compile-at :run-time)
+  "Test static dispatching of :BEFORE and :AFTER methods"
+
+  (locally (declare (inline my-eq)
+		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
+
+    (is-print (my-eq 1/2 2/3) "Before Numbers: 1/2 = 2/3. After Numbers: 1/2 = 2/3. ")
+    (is-print (my-eq 1 2) "Before Integer: 1 = 2. Before Numbers: 1 = 2. After Numbers: 1 = 2. After Integer: 1 = 2. ")
+
+    ;; Test that :BEFORE and :AFTER methods are not called when not
+    ;; applicable.
+    (is-print (my-eq 'x 'y) "")))
+
+(test (before-method-without-primary :compile-at :run-time)
+  "Test static dispatching of :BEFORE method without primary method"
+
+  (locally (declare (inline foo2) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+    (is-print
+     (handler-case (foo2 "x")
+       (no-primary-method-error () nil))
+     "FOO Before: x")
+
+    (test-error (foo2 1) no-primary-method-error)))
+
+(test (after-method-without-primary :compile-at :run-time)
+  "Test static dispatching of :AFTER method without primary method"
+
+  (locally (declare (inline bar) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+    (is-print
+     (handler-case (bar 1)
+       (no-primary-method-error () nil))
+     "")
+
+    (test-error (bar 5) no-primary-method-error)))
+
+(test (around-method-without-primary :compile-at :run-time)
+  "Test static dispatching of :AROUND method without primary method"
+
+  (locally (declare (inline bar) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+    (test-error (bar "hello") no-primary-method-error)
+    (test-error (bar 10) no-primary-method-error)))
+
+(test (before-method-call-next-method :compile-at :run-time)
+  "Test CALL-NEXT-METHOD from :BEFORE method"
+
+  (locally (declare (inline baz) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+    (is-print (baz 'x) "BAZ Before all: X NIL. ")
+
+    (is-print
+     (handler-case
+	 (baz 1)
+       (illegal-call-next-method-error () nil))
+     "BAZ Before INTEGER: 1 NIL. ")
+
+    (test-error (baz 14) illegal-call-next-method-error)))
+
+(test (after-method-call-next-method :compile-at :run-time)
+  "Test CALL-NEXT-METHOD from :AFTER method"
+
+  (locally (declare (inline baz) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+    (is-print (baz #(1 2 3))
+	      "BAZ Before all: #(1 2 3) NIL. BAZ After ARRAY: #(1 2 3) NIL. ")
+
+    (is-print
+     (handler-case
+	 (baz "abcd")
+       (illegal-call-next-method-error () nil))
+
+     "BAZ Before all: abcd NIL. BAZ After ARRAY: abcd NIL. BAZ After STRING: abcd NIL. ")
+
+    (test-error (baz "xyz") illegal-call-next-method-error)))
