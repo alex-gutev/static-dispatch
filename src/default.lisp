@@ -93,7 +93,7 @@
 
      (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
 	    (match-args (order-by-precedence precedence args))
-	    (types (get-return-types match-args env))
+	    (types (mapcar (rcurry #'nth-form-type env) match-args))
 	    (methods (-<> (aand (gf-methods gf-name) (hash-table-alist it))
 			  (order-method-specializers precedence)
 			  (applicable-methods types)

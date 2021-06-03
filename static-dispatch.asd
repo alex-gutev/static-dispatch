@@ -47,7 +47,8 @@
 	       :closer-mop
 
 	       :agutil
-	       :cl-environments)
+	       :cl-environments
+               :cl-form-types)
 
   :in-order-to ((asdf:test-op (asdf:test-op :static-dispatch/test))))
 
