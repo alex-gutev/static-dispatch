@@ -23,9 +23,15 @@
 ;;;; FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 ;;;; OTHER DEALINGS IN THE SOFTWARE.
 
-(agutil:define-merged-package :closer-environments
-    :cl-environments
-  :closer-mop)
+(uiop:define-package :closer-environments
+    (:use)
+
+  (:mix
+   :closer-mop
+   :cl-environments)
+
+  (:reexport :cl-environments
+             :closer-mop))
 
 (defpackage #:static-dispatch
   (:use :alexandria
@@ -50,6 +56,12 @@
 	   :illegal-call-next-method-error
 	   :no-primary-method-error))
 
-(agutil:define-merged-package :static-dispatch-cl
-    :closer-environments
-  :static-dispatch)
+(uiop:define-package :static-dispatch-cl
+    (:use)
+
+  (:mix
+   :static-dispatch
+   :closer-environments)
+
+  (:reexport :static-dispatch
+             :closer-environments))
