@@ -193,21 +193,24 @@
      (walk-environment
        (c2mop:defgeneric ,name ,lambda-list ,@options))
 
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (add-compiler-macro ',name))
+
      (remove-defined-methods ',name)
 
      ,@(handler-case
-	  (mappend
-	   (lambda-match
-	     ((list* :method args)
-	      (multiple-value-bind (qualifier specializers lambda-list body)
-		  (parse-method args)
+	   (mappend
+	    (lambda-match
+	      ((list* :method args)
+	       (multiple-value-bind (qualifier specializers lambda-list body)
+		   (parse-method args)
 
-		(list (make-add-method-info name qualifier specializers body :remove-on-redefine-p t)
-                      (make-static-dispatch name lambda-list specializers)))))
+		 (list (make-add-method-info name qualifier specializers body :remove-on-redefine-p t)
+                       (make-static-dispatch name lambda-list specializers)))))
 
-	   options)
+	    options)
 
-	(match-error () `((mark-no-dispatch ',name))))))
+	 (match-error () `((mark-no-dispatch ',name))))))
 
 (defun make-add-method-info (name qualifier specializers body &key remove-on-redefine-p)
   "Create a form which adds the method information to the method table.
@@ -253,6 +256,16 @@
 	    :body ',body
 	    :lambda-list (method-lambda-list ,method)
 	    :remove-on-redefine-p ,remove-on-redefine-p))))))
+
+(defun add-compiler-macro (name)
+  "Add compiler-macro to generic-function."
+
+  (aif (aand (compiler-macro-function name)
+             (not (eq it #'static-dispatch)))
+      (simple-style-warning
+       "Could not enable static dispatch for ~a: Function already has a compiler-macro."
+       name)
+      (setf (compiler-macro-function name) #'static-dispatch)))
 
 
 ;;; Parsing Method Definitions

@@ -44,20 +44,9 @@
              ((list :function name)
               (collect `(progn ,@(make-static-overload-functions name)))))))))
 
-(defun enable-static-dispatch% (name)
-  "Enable static dispatching for the generic function NAME."
-
-  (if (aand (compiler-macro-function name)
-            (not (eq it #'static-dispatch)))
-      (simple-style-warning "Could not enable static dispatch for ~a: Function already has a compiler-macro."
-			    name)
-      (setf (compiler-macro-function name) #'static-dispatch)))
-
 (defun make-static-dispatch (name lambda-list specializers)
-  (declare (ignore lambda-list specializers))
-
-  `(eval-when (:compile-toplevel :load-toplevel :execute)
-     (enable-static-dispatch% ',name)))
+  (declare (ignore name lambda-list specializers))
+  nil)
 
 (defun static-dispatch (whole &optional env)
   "Compiler macro function for statically dispatched generic
