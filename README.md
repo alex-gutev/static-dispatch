@@ -23,6 +23,36 @@ rather than the `CL` package. By default, generic functions are
 dispatched dynamically, and are identical to standard Common Lisp
 generic functions.
 
+A generic function call is statically dispatched when an `OPTIMIZE`
+declaration with a `SPEED` level of 3 is in-place, in the environment
+of the call.
+
+**Example:**
+
+```
+(locally (declare (optimize (speed 3) (safety 2)))
+    (declare (type integer x y))
+    (foo x y)) ; Call to FOO statically dispatched if type of X and Y known
+```
+
+In order for the applicable method to be chosen at compile-time, the
+types of the arguments to the generic function call must be known. On
+SBCL this is dependent on whether the compiler can determine the types
+of the arguments. On the remaining implementations
+[cl-form-types](https://github.com/alex-gutev/cl-form-types) is used
+to determine the argument types, and in order for this to be
+successful, the types of variables and return types of functions have
+to be declared.
+
+**NOTE:** `EQL` specializers are supported however `EQL` methods are
+only chosen if the argument is either a constant value `EQL` to the
+`EQL` specializer value, or is a variable declared of type `(EQL
+VALUE)` where `VALUE` is eql to the specializer value.
+
+If the types of the arguments cannot be determined, no method is
+chosen and the generic function call form is left as is, which
+falls back to the standard dynamic dispatch.
+
 The standard method combination is supported, including `:BEFORE`,
 `:AFTER` and `:AROUND` methods, as well as `CALL-NEXT-METHOD` and
 `NEXT-METHOD-P`. User-defined method combinations are not
@@ -35,32 +65,27 @@ package as well as the symbols in the `STATIC-DISPATCH` package,
 including the shadowed `DEFMETHOD` and `DEFGENERIC` macros. Use this
 package instead of `CL`.
 
-### Enable Static Dispatch
+### Overloading
 
-To enable static dispatching for a generic function the following
-macro form has to be inserted after the definition of the generic
-function and its methods:
+Static-dispatch also supports replacing a generic function call with a
+call to an ordinary function that implements the method, rather than
+inlining the method body. This is achieved using the
+`ENABLE-STATIC-DISPATCH` macro which configures how static dispatch is
+performed, whether inline or by calling the method function, for a
+generic function.
 
 ```lisp
 (enable-static-dispatch &rest names)
 ```
 
-where each item in `names` is the name of a generic function, for
-which to enable static dispatching. The name of a function may also be
-of the following forms which control how functions are statically
-dispatched:
+Each item in `names` indicates a generic function and how it is to be
+dispatched. It may take of one of the following forms:
 
 * `(:INLINE name)` - Calls to `name` are replaced with the body of the
   most applicable method(s) inline.
-  
+
 * `(:FUNCTION name)` - Calls to `name` are replaced with a call to an
   ordinary function which implements the most applicable method.
-  
-If only the name is given it's equivalent to `(:INLINE name)`. The
-only difference between this form and `(:INLINE name)` is that if
-static dispatching is already enabled for the function, the default
-form leaves the static dispatching mode as is whereas `(:INLINE name)`
-changes it to `:INLINE`.
 
 **NOTE:** The `:FUNCTION` static dispatching mode is most useful, when
 you have large methods and you want true overloading, as is found in
@@ -68,99 +93,42 @@ languages such as Java and C++. The `:INLINE` mode will likely result
 in faster, however also larger code.
 
 **NOTE:** Information about the generic function's methods must be
-available at the time the `ENABLE-STATIC-DISPATCH` macro is
-expanded. Furthermore only the methods defined till the point of its
-expansion will be considered for static dispatching. Thus it's best to
-place an `ENABLE-STATIC-DISPATCH` form in a separate file which is
-loaded after the file(s) containing the definition of the generic
-function and it's methods.
-
-### Static Dispatching
-
-To statically dispatch a generic function, an `OPTIMIZE` declaration,
-with a `SPEED` level greater than the `SAFETY` level, and an `INLINE`
-declaration for the generic function need to be in place in the
-lexical environment of the generic function call.
-
-**NOTE:** Static dispatching must have been enabled for the generic
-function, using `ENABLE-STATIC-DISPATCH`, prior to the generic
-function call, in order for the declarations to have any effect.
-
-**Example:**
-
-```
-(locally (declare (optimize (speed 3) (safety 2))
-                  (inline foo)) ; Static dispatch FOO
-
-    (FOO X Y)) ; Call to FOO statically dispatched if type of X and Y known
-```
-
-
-In order for the applicable method to be chosen at compile-time, the
-types of the arguments to the generic function call must be known.
-
-On SBCL this is dependent on whether the compiler can determine the
-types of the arguments.
-
-On the remaining implementations, the types of the arguments can be
-determined if they are one of the following:
-
-   + Variables for which there is a `TYPE` declaration.
-   + Functions for which there is an `FTYPE` declaration.
-   + `THE` forms.
-   + Constant literals.
-   + Constants defined using `DEFCONSTANT`.
-   + Macros/Symbol-macros which expand to one of the above.
-
-The types of the following special forms can also be determined:
-
-   + `PROGN`
-
-If the types of the arguments cannot be determined, no method is
-chosen and the generic function call form is left as is, which
-falls back to the standard dynamic dispatch.
-
-Both `EQL` and class specializers are supported. `EQL` methods will
-only be chosen statically if the argument is one of the following and
-is `EQL` to the specializer's value.
-
-   + Constant literal.
-   + Constant defined using `DEFCONSTANT`.
-   + Variable with a `TYPE (EQL ...)` declaration.
-   + Macro/Symbol-macro which expands to one of the above.
-
-**Note:** Even if a variable is bound (by `LET`) to a value that is
-`EQL` to the specializer's value, it will not be chosen unless it has
-a `TYPE (EQL ...)` declaration.
+available at the time the `ENABLE-STATIC-DISPATCH` macro is expanded,
+as only functions for those methods that are known will be
+generated.
 
 ### Prevent Static Dispatching
 
-**NOTE:** On SBCL all generic functions, for which static dispatch is
-enabled, using `ENABLE-STATIC-DISPATCH`, will be statically dispatched,
-regardless of whether the function is declared inline or not, if the
-`SPEED` optimization level exceeds the `SAFETY` optimization level. To
-prevent a function from being statically dispatched in such cases,
-declare it `NOTINLINE`.
+Static dispatching can be inhibited for a generic function, even when
+the safety level of `3`, by declaring that function `NOTINLINE`.
 
 **Example:**
 
 ```lisp
 (locally (declare (optimize speed)
                   (notinline foo))
+    (declare (type integer x y))
+    (FOO X Y)) ; FOO not statically dispatched
+```
+
+To inhibit static dispatching entirely for all generic functions, use
+a `SAFETY`, or `DEBUG` level of `3`.
+
+**Example:**
+
+```lisp
+(locally (declare (optimize (speed 3) (safety 3)))
+    (declare (type integer x y))
     (FOO X Y)) ; FOO not statically dispatched
 ```
 
 
 ### Optimize Declarations
 
-As stated earlier the `SPEED` level, in an `OPTIMIZE` declaration,
-must be greater than the `SAFETY` level for static dispatch to be
-performed.
-
-Additionally the values of the `SPEED` and `SAFETY` levels affect the
-code that is inserted in place of the generic function call
-expression. Specifically, the definition of the lexical
-`CALL-NEXT-METHOD` function.
+The `OPTIMIZE` levels not only control whether static dispatching is
+performed but also have an effect on the code that is inserted in
+place of the generic function call expression. Specifically, the
+definition of the lexical `CALL-NEXT-METHOD` function.
 
 The types of the arguments which may be passed to `CALL-NEXT-METHOD`
 are unknown. By default type checks, using `CHECK-TYPE`,
@@ -168,13 +136,13 @@ for the arguments are added. A condition is raised if the types of the
 arguments passed to `CALL-NEXT-METHOD` are not compatible with the
 types in the next applicable method's specializer list.
 
-When a `SPEED` level of 3 or a `SAFETY` level of 0 is given, the type
-checks are omitted and it is the programmer's responsibility to ensure
-that the arguments passed to the next method are compatible with the
-types in the method's specializer list. When `CALL-NEXT-METHOD` is
-called with no arguments, which is equivalent to being called with the
-same arguments as the current method, the argument types are
-guaranteed to be compatible.
+When a `SAFETY` level of 0 is given, the type checks are omitted and
+it is the programmer's responsibility to ensure that the arguments
+passed to the next method are compatible with the types in the
+method's specializer list. When `CALL-NEXT-METHOD` is called with no
+arguments, which is equivalent to being called with the same arguments
+as the current method, the argument types are guaranteed to be
+compatible.
 
 #### Examples
 
@@ -193,9 +161,7 @@ checks being inserted:
 
 ```lisp
 (locally
-  (declare (inline foo)
-           (optimize (speed 2) (safety 1)))
-
+  (declare (optimize (speed 3) (safety 1)))
   (declare (type integer x))
 
   (foo x))
@@ -275,8 +241,7 @@ And consider the following code:
 ```lisp
 (let ((x 1))
   (declare (type number x)
-           (optimize speed)
-           (inline foo))
+           (optimize speed))
 
   (foo x))
 ```
@@ -322,13 +287,16 @@ on statically dispatched generic function calls.
   Used to extract declaration information from environments, on any
   implementation.
 
+* [cl-form-types](https://github.com/alex-gutev/cl-form-types) - Used
+  to determine the types of the arguments to generic function calls.
+
 
 ### Other Dependencies
 
 * [agutil](https://github.com/alex-gutev/agutil)
 * [alexandria](https://gitlab.common-lisp.net/alexandria/alexandria)
 * [anaphora](https://github.com/tokenrove/anaphora)
-* [trivia](https://github.com/guicho271828/trivia)
+* [optima](https://github.com/m2ym/optima)
 * [iterate](https://gitlab.common-lisp.net/iterate/iterate)
 * [arrows](https://gitlab.com/Harleqin/arrows)
 
