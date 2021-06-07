@@ -79,7 +79,7 @@
 
   (let ((x-int 5) (y-int 10))
     (declare (type integer x-int y-int)
-	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -99,7 +99,7 @@
 
   (let ((x 0.5) (y 2.5))
     (declare (type float x y)
-	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -116,7 +116,7 @@
   (let ((x 1) (y 3/2))
     (declare (type integer x)
 	     (type number y)
-	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -132,7 +132,7 @@
 
   (let ((hello "hello"))
     (declare (type string hello)
-	     (optimize speed #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
@@ -147,7 +147,7 @@
   "Test NEXT-METHOD-P with no next method"
 
   (locally (declare (inline foo)
-		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
+		    (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
     (test-dispatch (foo 'x 0) '(other nil (x 0)))
     (test-dispatch (foo (pass-through "hello") +a-constant+)
@@ -163,7 +163,7 @@
   "Test static dispatching of :AROUND methods"
 
   (locally (declare (inline my-eq)
-		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
+		    (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
     (test-dispatch (my-eq 1/2 0.5) '(:around-number t))
     (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)))
@@ -174,7 +174,7 @@
   "Test static dispatching of :BEFORE and :AFTER methods"
 
   (locally (declare (inline my-eq)
-		    (optimize speed #+sbcl sb-ext:inhibit-warnings))
+		    (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
     (is-print (my-eq 1/2 2/3) "Before Numbers: 1/2 = 2/3. After Numbers: 1/2 = 2/3. ")
     (is-print (my-eq 1 2) "Before Integer: 1 = 2. Before Numbers: 1 = 2. After Numbers: 1 = 2. After Integer: 1 = 2. ")
@@ -186,7 +186,7 @@
 (test (before-method-without-primary :compile-at :run-time)
   "Test static dispatching of :BEFORE method without primary method"
 
-  (locally (declare (inline foo2) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline foo2) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print
      (handler-case (foo2 "x")
        (no-primary-method-error () nil))
@@ -197,7 +197,7 @@
 (test (after-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AFTER method without primary method"
 
-  (locally (declare (inline bar) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print
      (handler-case (bar 1)
        (no-primary-method-error () nil))
@@ -208,14 +208,14 @@
 (test (around-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AROUND method without primary method"
 
-  (locally (declare (inline bar) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (test-error (bar "hello") no-primary-method-error)
     (test-error (bar 10) no-primary-method-error)))
 
 (test (before-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :BEFORE method"
 
-  (locally (declare (inline baz) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline baz) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print (baz 'x) "BAZ Before all: X NIL. ")
 
     (is-print
@@ -229,7 +229,7 @@
 (test (after-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :AFTER method"
 
-  (locally (declare (inline baz) (optimize speed #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline baz) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print (baz #(1 2 3))
 	      "BAZ Before all: #(1 2 3) NIL. BAZ After ARRAY: #(1 2 3) NIL. ")
 
