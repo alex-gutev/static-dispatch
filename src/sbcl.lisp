@@ -37,41 +37,13 @@
     `(progn ,@(mapcar #'make-enable-static-dispatch names))))
 
 (defun make-enable-static-dispatch (name)
-  (ematch name
-    ((or (list (and (or :inline :function) dispatch-type)
-	       name)
-	 name)
+  (match name
+    ((list :inline name)
+     (make-remove-method-function-names name))
 
-     (labels ((sort-methods (methods)
-		(sort methods #'method< :key #'car))
-
-	      (method< (m1 m2)
-		(ematch* (m1 m2)
-		  (((list _ s1)
-		    (list _ s2))
-
-		   (specializer< s1 s2)))))
-
-       (let* ((gf (fdefinition name))
-	      (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	      (methods (-<> (aand (gf-methods name) (hash-table-alist it))
-			    (order-method-specializers precedence)
-			    (sort-methods)
-			    (remove-duplicates :key #'cadar :test #'equal)
-			    (mapcar #'cdr <>))))
-	 (unless methods
-	   (simple-style-warning "Could not enable static dispatch for: ~a. No methods found." name))
-
-	 `(progn
-	    ,@(when (eq dispatch-type :function)
-		(make-static-overload-functions name))
-
-	    ,@(when (eq dispatch-type :inline)
-		(list (make-remove-method-function-names name)))
-
-	    (sb-c:defknown ,name * * () :overwrite-fndb-silently t)
-
-	    ,@(reverse (mappend (curry #'make-transform name) methods))))))))
+    ((list :function name)
+     `(progn
+        ,@(make-static-overload-functions name)))))
 
 (defun should-transform? (node specializers)
   "Checks whether the transform should be applied for a given compilation NODE.
@@ -97,126 +69,62 @@
 
 ;;; Generating DEFTRANSFORM's
 
-(defun make-transform (name method)
-  "Generate a DEFTRANSFORM definition for statically dispatching a generic function method.
+(define-constant +static-dispatch-policy+
+    '(and (= speed 3) (< safety 3) (< debug 3))
+  :test 'equal
+  :documentation
+  "Optimization policy at which static dispatching is performed.")
 
-   NAME is the name of the generic function.
+(defun make-static-dispatch (name lambda-list specializers)
+  (let ((specializers (substitute '* 'eql specializers :key #'ensure-car))
+        (type-list (lambda-list->type-list lambda-list specializers))
+        (required (parse-ordinary-lambda-list lambda-list)))
 
-   METHOD is the `METHOD-INFO' object for which to create a IR1
-   transform.
+    (with-gensyms (node args types)
+      `(progn
+         (eval-when (:compile-toplevel :load-toplevel :execute)
+           (unless (sb-c::info :function :info ',name)
+             (sb-c:defknown ,name * * nil :overwrite-fndb-silently t)))
 
-   Returns a list of DEFTRANSFORM forms."
+         (locally
+             (declare (sb-ext:muffle-conditions style-warning))
 
-  (labels ((t-specializer? (specializer)
-	     (match specializer
-	       ((list* t _)
-		t)
+           (handler-bind ((style-warning #'muffle-warning))
+             ,@(when type-list
+                 `((sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy ,+static-dispatch-policy+ :node ,node)
+                     ,(format nil "Inline ~s method ~s" name specializers)
 
-	       ((list* _ rest)
-		(t-specializer? rest)))))
+                     (let ((types
+                            ,(make-dispatch-type-list
+                              (loop for i from 0 below (length required)
+                                 collect `(nth ,i ,args))
+                              node)))
 
-    (with-slots (specializers) method
-      (if (t-specializer? specializers)
-	  (make-default-transforms name method)
-	  (make-typed-transforms name method)))))
+                       (or (static-overload ',name ',args types ,node)
+                           (sb-c::give-up-ir1-transform))))))
 
-(defun make-typed-transforms (name method)
-  "Generate a DEFTRANSFORM definition for statically dispatching a method with typed specializers
+             (sb-c:deftransform ,name (,lambda-list ,(or type-list specializers) * :policy ,+static-dispatch-policy+ :node ,node)
+               ,(format nil "Inline ~s method ~s" name specializers)
 
-   This should only be used when all the method's specializers are specific types, not T.
+               (let ((*full-arg-list-form* ,(make-reconstruct-arg-list lambda-list))
+                     (*call-args* ,(make-reconstruct-static-arg-list lambda-list))
+                     (,types ,(make-dispatch-type-list required node)))
 
-   NAME is the name of the generic function.
+                 (or (static-overload ',name nil ,types ,node)
+                     (sb-c::give-up-ir1-transform))))))))))
 
-   METHOD is the `METHOD-INFO' object for which to create a IR1
-   transform.
+(defun make-dispatch-type-list (args node)
+  "Generate a form which generates the argument type list.
 
-   Returns a list of DEFTRANSFORM forms."
+   ARGS are the transform arguments to include in the type list.
 
-  (with-slots (lambda-list specializers) method
-    (let ((type-list (lambda-list->type-list lambda-list specializers)))
-      (with-gensyms (args node)
-	(list* (->> (make-transform-body name nil specializers node)
-		    (make-destructure-transform name method (or type-list specializers) node))
+   NODE is the compilation node argument."
 
-	       (when type-list
-		 (->> (make-transform-body name args specializers node)
-		      (make-arglist-transform name method args node)
-		      list)))))))
-
-(defun make-default-transforms (name method)
-  "Generate a DEFTRANSFORM definition for statically dispatching a method with T specializers
-
-   This should be used when some or all of the method's specializers
-   are T.
-
-   NAME is the name of the generic function.
-
-   METHOD is the `METHOD-INFO' object for which to create an IR1
-   transform.
-
-   Returns a list of DEFTRANSFORM forms."
-
-  (with-slots (lambda-list specializers) method
-    (let ((type-list (lambda-list->type-list lambda-list specializers)))
-      (with-gensyms (args node)
-	(list* (->> (make-default-transform-body name nil specializers node)
-		    (make-destructure-transform name method (or type-list specializers) node))
-
-	       (when type-list
-		 (->> (make-default-transform-body name args specializers node)
-		      (make-arglist-transform name method args node)
-		      list)))))))
-
-(defun make-destructure-transform (name method type-list node body)
-  "Generate a DEFTRANSFORM with a specific lambda list.
-
-   This generates a transform which is only applied if the structure
-   implied by the lambda-list matches the arguments given.
-
-   NAME is the name of the generic function.
-
-   METHOD is the `METHOD-INFO' object for which to create an IR1
-   transform.
-
-   TYPE-LIST is the parameter type specification list.
-
-   NODE is the name of the variable to which the compilation node is
-   bound.
-
-   BODY is the form which implements the transform."
-
-  (with-slots (lambda-list specializers) method
-    `(sb-c:deftransform ,name (,lambda-list ,type-list * :policy (> speed safety) :node ,node)
-       ,(format nil "Inline ~s method ~s" name specializers)
-
-       (let ((*full-arg-list-form* ,(make-reconstruct-arg-list lambda-list))
-	     (*call-args* ,(make-reconstruct-static-arg-list lambda-list)))
-	 ,body))))
-
-(defun make-arglist-transform (name method args node body)
-  "Generate a DEFTRANSFORM with a non-specific lambda list.
-
-   This generates a transform with and (&rest ...) lambda-list, which
-   will required manual destructuring further on.
-
-   NAME is the name of the generic function.
-
-   METHOD is the `METHOD-INFO' object for which to create an IR1
-   transform.
-
-   ARGS is the name of the &REST variable to which the entire argument
-   list is bound.
-
-   NODE is the name of the variable to which the compilation node is
-   bound.
-
-   BODY is the form which implements the transform."
-
-  (with-slots (specializers) method
-    `(sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy (> speed safety) :node ,node)
-       ,(format nil "Inline ~s method ~s" name specializers)
-
-       ,body)))
+  `(let ((*handle-sb-lvars* t))
+     (list
+      ,@(loop for arg in args
+           collect
+             `(nth-form-type ,arg (sb-c::node-lexenv ,node))))))
 
 (defun lambda-list->type-list (lambda-list specializers)
   "Convert a lambda-list to a type specifier list.
@@ -239,42 +147,6 @@
 	      (when (or key allow-other-keys) '(&key))
 	      (loop for ((keyword)) in key collect `(,keyword *))
 	      (when allow-other-keys '(&allow-other-keys))))))
-
-(defun make-default-transform-body (name args specializers node)
-  "Generate the body of a default (untyped) transform.
-
-   NAME is the name of the generic function.
-
-   ARGS is the argument list specifier.
-
-   SPECIALIZERS is the specializer list of the method.
-
-   NODE is the name of the variable to which the compilation node is
-   bound.
-
-   Returns a form implementing the transform."
-
-  `(or
-    (when (should-transform? ,node ',specializers)
-      (static-overload ',name ',args ',specializers ,node))
-    (sb-c::give-up-ir1-transform)))
-
-(defun make-transform-body (name args specializers node)
-  "Generate the body of a typed transform.
-
-   NAME is the name of the generic function.
-
-   ARGS is the argument list specifier.
-
-   SPECIALIZERS is the specializer list of the method.
-
-   NODE is the name of the variable to which the compilation node is
-   bound.
-
-   Returns a form implementing the transform."
-
-  `(or (static-overload ',name ',args ',specializers ,node)
-       (sb-c::give-up-ir1-transform)))
 
 (defun make-reconstruct-arg-list (lambda-list)
   "Generate a form which generates a form that reconstructs an argument list.
@@ -388,7 +260,7 @@
 	     (types (order-by-precedence precedence types))
 	     (methods (-<> (aand (gf-methods name) (hash-table-alist it))
 			   (order-method-specializers precedence)
-			   (applicable-methods types nil)
+			   (applicable-methods types)
 			   (sort-methods)
 			   (mapcar #'cdr <>))))
 	(when methods

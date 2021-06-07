@@ -37,26 +37,27 @@
     `(eval-when (:compile-toplevel :load-toplevel :execute)
        ,@(iter
 	   (for name in names)
-	   (ematch name
-	     ((or (list (and (or :inline :function) dispatch-type)
-			name)
-		  name)
+	   (match name
+             ((list :inline name)
+              (collect (make-remove-method-function-names name)))
 
-	      (when (eq dispatch-type :function)
-		(collect `(progn ,@(make-static-overload-functions name))))
-
-	      (when (eq dispatch-type :inline)
-		(collect (make-remove-method-function-names name)))
-
-	      (collect `(enable-static-dispatch% ',name))))))))
+             ((list :function name)
+              (collect `(progn ,@(make-static-overload-functions name)))))))))
 
 (defun enable-static-dispatch% (name)
   "Enable static dispatching for the generic function NAME."
 
-  (if (compiler-macro-function name)
+  (if (aand (compiler-macro-function name)
+            (not (eq it #'static-dispatch)))
       (simple-style-warning "Could not enable static dispatch for ~a: Function already has a compiler-macro."
 			    name)
       (setf (compiler-macro-function name) #'static-dispatch)))
+
+(defun make-static-dispatch (name lambda-list specializers)
+  (declare (ignore lambda-list specializers))
+
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (enable-static-dispatch% ',name)))
 
 (defun static-dispatch (whole &optional env)
   "Compiler macro function for statically dispatched generic

@@ -181,9 +181,9 @@
 	  (multiple-value-bind (qualifier specializers lambda-list body)
 	      (parse-method args)
 
-	    (declare (ignore lambda-list))
-
-	    (make-add-method-info name qualifier specializers body))
+            `(progn
+	       ,(make-add-method-info name qualifier specializers body)
+               ,(make-static-dispatch name lambda-list specializers)))
 
 	  (match-error () `(mark-no-dispatch ',name))
 	  (not-supported () `(mark-no-dispatch ',name)))))
@@ -202,9 +202,8 @@
 	      (multiple-value-bind (qualifier specializers lambda-list body)
 		  (parse-method args)
 
-		(declare (ignore lambda-list))
-
-		(list (make-add-method-info name qualifier specializers body :remove-on-redefine-p t)))))
+		(list (make-add-method-info name qualifier specializers body :remove-on-redefine-p t)
+                      (make-static-dispatch name lambda-list specializers)))))
 
 	   options)
 
