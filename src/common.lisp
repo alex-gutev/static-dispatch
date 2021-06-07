@@ -325,8 +325,21 @@
    dispatched. This is the case if it is declared inline in the
    environment ENV."
 
-  (let ((decl (nth-value 2 (function-information name env))))
-    (eq (cdr (assoc 'inline decl)) 'inline)))
+
+  (let* ((levels (declaration-information 'optimize env))
+         (speed (or (second (assoc 'speed levels)) 1))
+         (safety (or (second (assoc 'safety levels)) 1))
+         (debug (or (second (assoc 'debug levels)) 1)))
+
+    (and (= speed 3)
+         (< safety 3)
+         (< debug 3)
+         (not
+          (eq 'notinline
+              (->> (function-information name env)
+                   (nth-value 2)
+                   (assoc 'inline)
+                   (cdr)))))))
 
 
 ;;; Method Inlining

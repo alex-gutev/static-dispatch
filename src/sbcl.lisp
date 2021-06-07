@@ -266,7 +266,7 @@
 	(when methods
 	  `(progn
 	     (static-dispatch-test-hook)
-	     ,(inline-methods methods args (sb-c:policy node (not (or (eql speed 3) (eql safety 0)))) types)))))))
+	     ,(inline-methods methods args (sb-c:policy node (> safety 0)) types)))))))
 
 
 ;;; Utilities
