@@ -1056,8 +1056,7 @@
    optimize quality in the environment ENV."
 
   (let ((optimize (declaration-information 'optimize env)))
-    (or (eql (second (assoc 'safety optimize)) 0)
-	(eql (second (assoc 'speed optimize)) 3))))
+    (eql (second (assoc 'safety optimize)) 0)))
 
 (defun make-type-checks (vars types)
   "Returns a list of CHECK-TYPE forms for each variable in VARS and
