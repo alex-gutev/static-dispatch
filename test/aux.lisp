@@ -70,9 +70,6 @@
 ;;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
-;; Enable static dispatch
-(enable-static-dispatch my-eq foo bar baz)
-
 (test (around-methods :compile-at :run-time)
   "Test static dispatching of :AROUND methods"
 

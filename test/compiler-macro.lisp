@@ -95,8 +95,6 @@
 
 (defconstant +a-constant+ 10)
 
-(enable-static-dispatch f)
-
 
 ;;; Tests
 
