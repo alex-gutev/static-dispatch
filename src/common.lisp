@@ -80,6 +80,9 @@
 
 ;;; Global Method Table
 
+(defvar *known-generic-functions* nil
+  "List of generic defined with DEFGENERIC from this library.")
+
 (defvar *generic-function-table* (make-hash-table :test #'equal)
   "Hash table mapping generic functions to a list of methods.")
 
@@ -177,16 +180,17 @@
      (walk-environment
        (c2mop:defmethod ,name ,@args))
 
-     ,(handler-case
-	  (multiple-value-bind (qualifier specializers lambda-list body)
-	      (parse-method args)
+     ,(when (member name *known-generic-functions* :test #'equal)
+        (handler-case
+	    (multiple-value-bind (qualifier specializers lambda-list body)
+	        (parse-method args)
 
-            `(progn
-	       ,(make-add-method-info name qualifier specializers body)
-               ,(make-static-dispatch name lambda-list specializers)))
+              `(progn
+	         ,(make-add-method-info name qualifier specializers body)
+                 ,(make-static-dispatch name lambda-list specializers)))
 
 	  (match-error () `(mark-no-dispatch ',name))
-	  (not-supported () `(mark-no-dispatch ',name)))))
+	  (not-supported () `(mark-no-dispatch ',name))))))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
   `(progn
@@ -194,7 +198,8 @@
        (c2mop:defgeneric ,name ,lambda-list ,@options))
 
      (eval-when (:compile-toplevel :load-toplevel :execute)
-       (add-compiler-macro ',name))
+       (add-compiler-macro ',name)
+       (pushnew ',name *known-generic-functions* :test #'equal))
 
      (remove-defined-methods ',name)
 
