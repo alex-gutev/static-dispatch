@@ -67,7 +67,10 @@
       (when (static-dispatch? name env)
 	(handler-case
 	    (static-overload name args env)
-	  (not-supported () whole)))))
+
+	  (error (e)
+            (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
+            whole)))))
    whole))
 
 (defun static-overload (gf-name args env)
@@ -76,23 +79,14 @@
    the body of the method. If there are no applicable methods, or the
    types of the arguments could not be determined, NIL is returned."
 
-  (when (fboundp gf-name)
-    (let* ((*current-gf* gf-name)
-	   (*env* env)
-	   (gf (fdefinition gf-name)))
+  (unless (and (fboundp gf-name)
+               (typep (fdefinition gf-name) 'generic-function))
+    (error "~s is not a generic function." gf-name))
 
-     (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	    (match-args (order-by-precedence precedence args))
-	    (types (mapcar (rcurry #'nth-form-type env) match-args))
-	    (methods (-<> (aand (gf-methods gf-name) (hash-table-alist it))
-			  (order-method-specializers precedence)
-			  (applicable-methods types)
-			  (sort-methods)
-			  (mapcar #'cdr <>))))
+  (let* ((*env* env)
+	 (gf (fdefinition gf-name))
+         (types (mapcar #'nth-form-type env) args)
+         (methods (compute-applicable-methods% gf-name types)))
 
-       (when methods
-	 (let ((gensyms (loop repeat (length args) collect (gensym))))
-	   `(let ,(mapcar #'list gensyms args)
-	      (declare ,@(mapcar (curry #'list 'type) types gensyms))
-	      (static-dispatch-test-hook)
-	      ,(inline-methods methods gensyms (should-check-types env) types))))))))
+    (when methods
+      (inline-call gf methods args types (should-check-types? env)))))

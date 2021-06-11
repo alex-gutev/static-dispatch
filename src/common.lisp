@@ -34,12 +34,11 @@
     :documentation
     "The method function body.")
 
-   (qualifier
-    :initarg :qualifier
-    :accessor qualifier
+   (qualifiers
+    :initarg :qualifiers
+    :accessor qualifiers
     :documentation
-    "The method qualifier, NIL for primary methods or :BEFORE, :AFTER,
-     :AROUND for auxiliary methods.")
+    "List of method qualifiers.")
 
    (lambda-list
     :initarg :lambda-list
@@ -65,18 +64,6 @@
    "Stores the body of a method and the name of a non-generic function
     which contains the method's body."))
 
-(define-condition not-supported (error)
-  ((feature
-    :initarg :feature
-    :initform nil
-    :reader feature
-    :documentation
-    "Symbol identifying the unsupported feature."))
-
-  (:documentation
-   "Error condition: A CLOS feature was used that is not supporting in
-    inlining/static dispatch."))
-
 
 ;;; Global Method Table
 
@@ -90,9 +77,9 @@
 (defvar *method-functions* (make-hash-table :test #'equal)
   "Hash table mapping methods to the function implementing that method.
 
-   Each key is of the form (NAME QUALIFIER SPECIALIZERS) where NAME is
-   the name of the generic function, QUALIFIER is the method qualifier
-   and SPECIALIZERS is the argument type specializer list.")
+   Each key is of the form (NAME QUALIFIERS SPECIALIZERS) where NAME
+   is the name of the generic function, QUALIFIERS is the method
+   qualifier list and SPECIALIZERS is the argument specializer list.")
 
 (defun gf-methods (gf-name)
   "Returns the method information for the generic function GF-NAME. A
@@ -105,157 +92,174 @@
   "Ensures that a method table for the generic function GF-NAME
    exists, in *GENERIC-FUNCTION-TABLE*."
 
-  (or (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal))
-      (error 'not-supported)))
+  (ensure-gethash gf-name *generic-function-table* (make-hash-table :test #'equal)))
 
-(defun gf-method (gf-name specializers)
-  "Returns the `METHOD-INFO', of the method with specializer list
-   SPECIALIZERS, of the generic function GF-NAME."
+(defun gf-method (gf-name spec)
+  "Returns the `METHOD-INFO', of the method with specifier (qualifier
+   and specializer list) SPEC of the generic function GF-NAME."
 
-  (aand (gf-methods gf-name) (gethash specializers it)))
+  (aand (gf-methods gf-name) (gethash spec it)))
 
-(defun (setf gf-method) (value gf-name specializers)
-  "Sets the method info, to VALUE, for the method with specializer
-   list SPECIALIZERS, of the generic function GF-NAME."
+(defun (setf gf-method) (value gf-name spec)
+  "Sets the method info, to VALUE, for the method with
+   specifier (qualifier and specializer list) SPEC of the generic
+   function GF-NAME."
 
-  (setf (gethash specializers (ensure-gf-methods gf-name))
+  (setf (gethash spec (ensure-gf-methods gf-name))
 	value))
 
-(defun ensure-method-info (gf-name qualifier specializers &key body lambda-list remove-on-redefine-p)
-  "Ensures that the method table, withing *GENERIC-FUNCTION-TABLE*, of
-   the generic function GF-NAME contains a method with qualifier
-   QUALIFIER, specializers SPECIALIZERS, lambda-list LAMBDA-LIST and
+(defun ensure-method-info (gf-name qualifiers specializers &key body lambda-list remove-on-redefine-p)
+  "Ensures that the method table, within *GENERIC-FUNCTION-TABLE*, of
+   the generic function GF-NAME contains a method with qualifiers
+   QUALIFIERS, specializers SPECIALIZERS, lambda-list LAMBDA-LIST and
    body BODY. If the table does not contain a method for those
    specializers, a new `METHOD-INFO' object is created."
 
   (aprog1
       (ensure-gethash
-       (list qualifier specializers) (ensure-gf-methods gf-name)
+       (list qualifiers specializers) (ensure-gf-methods gf-name)
 
        (make-instance 'method-info
 		      :specializers specializers
-		      :qualifier qualifier
+		      :qualifiers qualifiers
 		      :remove-on-redefine-p remove-on-redefine-p))
 
     (setf (lambda-list it) lambda-list)
     (setf (body it) body)))
-
-(defun mark-no-dispatch (gf-name)
-  "Mark the generic function as one which should not be dispatched
-   statically. This is used primarily when unsupported features are
-   used in the definition of the generic function or its methods."
-
-  (setf (gethash gf-name *generic-function-table*) nil))
 
 (defun remove-defined-methods (name)
   "Remove the methods of a generic-function for which REMOVE-ON-REDEFINE-P is true.
 
    NAME is the name of the generic function."
 
-  (handler-case
-      (let ((methods (ensure-gf-methods name)))
-	(iter
-	  (for (key method) in-hashtable methods)
-	  (when (remove-on-redefine-p method)
-	    (remhash key methods))))
-
-    (not-supported ())))
+  (let ((methods (ensure-gf-methods name)))
+    (iter
+      (for (key method) in-hashtable methods)
+      (when (remove-on-redefine-p method)
+	(remhash key methods)))))
 
 (defun method-spec (method-info)
   "Return the method specifier, i.e. the key used within the method table.
 
    METHOD-INFO is the `METHOD-INFO' object of the method."
 
-  (with-slots (qualifier specializers) method-info
-    (list qualifier specializers)))
+  (with-slots (qualifiers specializers) method-info
+    (list qualifiers specializers)))
+
+(defun find-method% (gf qualifiers specializers)
+  #+clisp
+  (find-method
+   gf qualifiers
+   (mapcar
+    (lambda (specializer)
+      (match specializer
+	((list 'eql value)
+	 (intern-eql-specializer value))
+
+	(_
+	 (find-class specializer nil)))))
+   nil)
+
+  #-clisp (find-method gf qualifiers specializers nil))
+
+(defun info-for-method (gf-name method)
+  "Return the `METHOD-INFO' object for a method.
+
+   GF-NAME is the name of the generic function.
+
+   METHOD is the method object.
+
+   Returns the corresponding `METHOD-INFO' object or NIL if there is
+   no information about the method."
+
+  (->> (method-specializers method)
+       (mapcar #'specializer->cl)
+       (list (method-qualifiers method))
+       (gf-method gf-name)))
 
 
 ;;; DEFMETHOD and DEFGENERIC Macros
 
 (defmacro defmethod (name &rest args)
-  `(progn
-     (walk-environment
-       (c2mop:defmethod ,name ,@args))
+  (with-gensyms (method)
+    `(let ((,method
+            (walk-environment
+              (c2mop:defmethod ,name ,@args))))
 
-     ,(handler-case
-	  (multiple-value-bind (qualifier specializers lambda-list body)
-	      (parse-method args)
+       ,(handler-case
+	    (multiple-value-bind (qualifiers specializers lambda-list body)
+	        (parse-method args)
 
-            `(progn
-	       ,(make-add-method-info name qualifier specializers body)
-               ,(make-static-dispatch name lambda-list specializers)))
+              (declare (ignore qualifiers))
 
-	  (match-error () `(mark-no-dispatch ',name))
-	  (not-supported () `(mark-no-dispatch ',name)))))
+              `(progn
+	         ,(make-add-method-info name method body)
+                 ,(make-static-dispatch name lambda-list specializers)))
+
+	  (error (e)
+            (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~s" e)))
+
+       ,method)))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
-  `(progn
-     (walk-environment
-       (c2mop:defgeneric ,name ,lambda-list ,@options))
+  (let ((combination 'standard)
+        (combination-options))
 
-     (eval-when (:compile-toplevel :load-toplevel :execute)
-       (add-compiler-macro ',name))
+    (with-gensyms (gf method)
+      (progn
+        `(let ((,gf
+                (walk-environment
+                  (c2mop:defgeneric ,name ,lambda-list ,@options))))
 
-     (remove-defined-methods ',name)
+           (add-compiler-macro ',name)
+           (remove-defined-methods ',name)
 
-     ,@(handler-case
-	   (mappend
-	    (lambda-match
-	      ((list* :method args)
-	       (multiple-value-bind (qualifier specializers lambda-list body)
-		   (parse-method args)
+           ,@(handler-case
+                 (append
+                  (mappend
+	           (lambda-match
+	             ((list* :method args)
+	              (multiple-value-bind (qualifiers specializers lambda-list body)
+		          (parse-method args)
 
-		 (list (make-add-method-info name qualifier specializers body :remove-on-redefine-p t)
-                       (make-static-dispatch name lambda-list specializers)))))
+		        (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
+                                 ,(make-add-method-info name method body :remove-on-redefine-p t))
 
-	    options)
+                              (make-static-dispatch name lambda-list specializers))))
 
-	 (match-error () `((mark-no-dispatch ',name))))))
+                     ((list* :method-combination name options)
+                      (setf combination name)
+                      (setf combination-options options)))
 
-(defun make-add-method-info (name qualifier specializers body &key remove-on-redefine-p)
+	           options)
+
+                  `((setf (combination-options ',name)
+                          '(,combination ,combination-options))))
+
+	       (error (e)
+                 (simple-style-warning "Error parsing DEFGENERIC form:~%~s" e)))
+
+           ,gf)))))
+
+(defun make-add-method-info (name method body &key remove-on-redefine-p)
   "Create a form which adds the method information to the method table.
 
    NAME is the name of the generic function.
 
-   QUALIFIER is the method qualifier.
+   METHOD is a variable storing the method object.
 
-   SPECIALIZERS is the method's specializer list as it appears in the
-   DEFMETHOD form.
+   BODY is the method body.
 
    REMOVE-ON-REDEFINE-P is a flag for whether the method should be
    removed when the generic function is redefined."
 
-  (flet (#-clisp
-	 (make-specializer (specializer)
-	   (match specializer
-	     ((list 'eql value)
-	      ``(eql ,,value))
-
-	     (_ `',specializer)))
-
-	 #+clisp
-	 (make-specializer (specializer)
-	   (match specializer
-	     ((list 'eql value)
-	      `(intern-eql-specializer ,value))
-
-	     (_
-	      `(find-class ',specializer nil)))))
-
-    (with-gensyms (method)
-      `(let ((,method (find-method
-		       (fdefinition ',name)
-		       ',(ensure-list qualifier)
-		       (list ,@(mapcar #'make-specializer specializers))
-		       nil)))
-	 (when ,method
-	   (ensure-method-info
-	    ',name
-	    ',qualifier
-	    (mapcar #'specializer->cl (method-specializers ,method))
-	    :body ',body
-	    :lambda-list (method-lambda-list ,method)
-	    :remove-on-redefine-p ,remove-on-redefine-p))))))
+  `(ensure-method-info
+    ',name
+    (method-qualifiers ,method)
+    (mapcar #'specializer->cl (method-specializers ,method))
+    :body ',body
+    :lambda-list (method-lambda-list ,method)
+    :remove-on-redefine-p ,remove-on-redefine-p))
 
 (defun add-compiler-macro (name)
   "Add compiler-macro to generic-function."
@@ -270,16 +274,17 @@
 
 ;;; Parsing Method Definitions
 
-(defun parse-method (args)
-  (ematch args
-    ((or (list* (guard lambda-list (listp lambda-list)) body)
-	 (list* (and (or :around :before :after) qualifier)
-		(guard lambda-list (listp lambda-list)) body))
+(defun parse-method (def)
+  (nlet parse ((def def) (qualifiers nil))
+    (ematch def
+      ((list* (and (type symbol) qualifier) def)
+       (parse def (cons qualifier qualifiers)))
 
-     (multiple-value-call #'values
-       qualifier
-       (parse-method-lambda-list lambda-list)
-       body))))
+      ((list* (and (type proper-list) lambda-list) body)
+       (multiple-value-call #'values
+         (reverse qualifiers)
+         (parse-method-lambda-list lambda-list)
+         body)))))
 
 (defun parse-method-lambda-list (lambda-list)
   (iter
@@ -294,13 +299,6 @@
        (collect (or specializer t) into specializers)))
 
     (finally (return (values specializers required)))))
-
-(defun has-eql-specializer? (specializers)
-  "Returns true if SPECIALIZERS contains EQL
-   specializers. SPECIALIZERS should be the list of specializers
-   extracted from a DEFMETHOD lambda list."
-
-  (some (lambda-match ((list 'eql _) t)) specializers))
 
 (defun specializer->cl (specializer)
   "Returns the CL representation of a specializer as used in a
@@ -317,93 +315,37 @@
      `(eql ,(eql-specializer-object specializer)))))
 
 
-;;; Static Dispatching
+;;; Method Ordering
 
-(defmacro static-dispatch-test-hook ()
-  "A form of this macro is inserted in the output of the
-   STATIC-DISPATCH compiler macro, in order to allow certain test code
-   to be inserted, by shadowing this macro using MACROLET. The
-   global expands to NIL."
+(defun compute-applicable-methods% (name types)
+  "Determine the applicable methods for given argument types.
 
-  nil)
+   NAME is the name of the generic-function.
 
-(defmacro static-method-function-test-hook ()
-  "A form of this macro is inserted in method functions, in order to
-   allow test code to be inserted."
+   TYPES is the list of types of the generic-function required
+   arguments.
 
-  nil)
+   Returns the sorted list of applicable methods. Returns NIL if there
+   are no applicable methods, or if the generic-function contains a
+   method for which there is no `METHOD-INFO' object."
 
-(defun static-dispatch? (name env)
-  "Checks whether the generic function named NAME should be statically
-   dispatched. This is the case if it is declared inline in the
-   environment ENV."
+  (flet ((check-method (method)
+           (or (info-for-method name method)
+               (simple-style-warning
+                "Missing method info for method ~s of ~s. Refusing to static dispatch."
+                name method))))
 
+    (let* ((gf (fdefinition name))
+	   (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
+	   (types (order-by-precedence precedence types))
+           (methods (generic-function-methods gf)))
 
-  (let* ((levels (declaration-information 'optimize env))
-         (speed (or (second (assoc 'speed levels)) 1))
-         (safety (or (second (assoc 'safety levels)) 1))
-         (debug (or (second (assoc 'debug levels)) 1)))
+      (when (every #'check-method methods)
+        (-<> (order-method-specializers methods precedence)
+	     (applicable-methods types)
+	     (sort-methods)
+	     (mapcar #'cdr <>))))))
 
-    (and (= speed 3)
-         (< safety 3)
-         (< debug 3)
-         (not
-          (eq 'notinline
-              (->> (function-information name env)
-                   (nth-value 2)
-                   (assoc 'inline)
-                   (cdr)))))))
-
-
-;;; Method Inlining
-
-(defvar *env* nil
-  "Environment in which the current generic function is being
-   statically dispatched.")
-
-(defvar *current-gf* nil
-  "The name of the generic function currently being inlined/statically
-   dispatched.")
-
-(defvar *full-arg-list-form* nil
-  "Bound to a from which constructs the full argument list for use as
-   the default argument list in CALL-NEXT-METHOD.")
-
-(defvar *call-args* nil
-  "Bound to the argument list of the current generic function call.")
-
-(define-condition illegal-call-next-method-error (error)
-  ((method-type
-    :reader method-type
-    :initarg :method-type
-    :documentation
-    "The type of method from which CALL-NEXT-METHOD was called."))
-
-  (:documentation
-   "Condition representing an illegal call to CALL-NEXT-METHOD from within a :BEFORE and :AFTER method"))
-
-(cl:defmethod print-object ((e illegal-call-next-method-error) stream)
-  (format stream "CALL-NEXT-METHOD called inside ~a method" (method-type e)))
-
-(define-condition no-primary-method-error (error)
-  ((gf-name
-    :reader gf-name
-    :initarg :gf-name
-    :documentation
-    "Generic function name.")
-
-   (args
-    :reader args
-    :initarg :args
-    :documentation
-    "Method arguments."))
-
-  (:documentation
-   "No primary method for a generic function with given arguments."))
-
-(cl:defmethod print-object ((e no-primary-method-error) stream)
-  (format stream "No primary method for generic function ~a with arguments ~a"
-	  (gf-name e) (args e)))
 
 (defun precedence-order (lambda-list precedence)
   "Returns a list of the generic function arguments in argument
@@ -417,42 +359,17 @@
 
   (mapcar (curry #'elt args) precedence))
 
-
 (defun order-method-specializers (methods precedence)
   "Orders the specializers of METHODS by the argument precedence order
    PRECEDENCE."
 
   (flet ((order-specializers (method)
-	   (destructuring-bind ((qualifier specializers) . method) method
-	     (cons
-	      (list
-	       qualifier
-	       (order-by-precedence precedence specializers))
-	      method))))
+           (let ((specializers (->> (method-specializers method)
+                                    (mapcar #'specializer->cl))))
+
+             (cons (order-by-precedence precedence specializers)
+                   method))))
     (mapcar #'order-specializers methods)))
-
-(defun methods-for-types (name types &optional (remove-t t))
-  "Return the list of applicable methods for a given set of types.
-
-   NAME is the generic function name.
-
-   TYPES is the a list of type specifiers for the required arguments.
-
-   REMOVE-T is a flag, which if true, results in T methods being
-   removed if they match a T specifier.
-
-   Returns the list of applicable methods, `METHOD-INFO' objects, in
-   descending order of priority, with the method which should be
-   called first ordered first."
-
-  (let* ((gf (fdefinition name))
-	 (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	 (types (order-by-precedence precedence types)))
-    (-<> (aand (gf-methods name) (hash-table-alist it))
-	 (order-method-specializers precedence)
-	 (applicable-methods types remove-t)
-	 (sort-methods)
-	 (mapcar #'cdr <>))))
 
 (defun applicable-methods (methods types &optional (remove-t t))
   "Returns a list of all methods in METHODS which are applicable to
@@ -481,7 +398,7 @@
 	     (cons (cdar method) (cdr method)))
 
 	   (copy-specializer (method)
-	     (cons (cadar method) method)))
+	     (cons (car method) method)))
 
     (->> (mapcar #'copy-specializer methods)
 	 (filter-methods types)
@@ -490,33 +407,7 @@
 (defun sort-methods (methods)
   "Sorts METHODS by specificity."
 
-  (sort methods #'method< :key #'car))
-
-(defun method< (s1 s2)
-  "Returns true if method with specializers and qualifier S1 should be
-   called before S2."
-
-  (destructuring-bind (q1 s1) s1
-    (destructuring-bind (q2 s2) s2
-      (cond
-	((and (eq q1 q2)
-	      (eq q1 :after))
-	 (specializer< s2 s1))
-
-	((eq q1 q2)
-	 (specializer< s1 s2))
-
-	(t
-	 (qualifier< q1 q2))))))
-
-(defun qualifier< (q1 q2)
-  "Returns true if the method with qualifier Q1 should be called
-   before the method with qualifier Q2."
-
-  (match* (q1 q2)
-    ((:before (not :before)) t)
-    (((not :after) :after) t)
-    ((:around (not :around)) t)))
+  (sort methods #'specializer< :key #'car))
 
 (defun specializer< (s1 s2)
   "Returns true if the specializer list S1 is more specific than
@@ -564,88 +455,106 @@
 			    :greater))))))))))
     (eq (specializer< s1 s2) :less)))
 
-(defun inline-methods (methods args &optional check-types types)
-  "Return a form which contains the body of all the applicable
-   methods (METHODS) inline, starting with the most specific method.
+
+;;; Static Dispatching
 
-   ARGS is either a list of the arguments passed to the methods or a
-   symbol naming a variable in which the argument list is stored.
+(defmacro static-dispatch-test-hook ()
+  "A form of this macro is inserted in the output of the
+   STATIC-DISPATCH compiler macro, in order to allow certain test code
+   to be inserted, by shadowing this macro using MACROLET. The
+   global expands to NIL."
 
-   If CHECK-TYPES is true CHECK-TYPES forms are inserted to check the
-   types of the arguments to CALL-NEXT-METHOD.
+  nil)
 
-   TYPES is a list of the argument types, determined from the lexical
-   environment."
+(defmacro static-method-function-test-hook ()
+  "A form of this macro is inserted in method functions, in order to
+   allow test code to be inserted."
+
+  nil)
+
+(defun static-dispatch? (name env)
+  "Checks whether the generic function named NAME should be statically
+   dispatched. This is the case if it is declared inline in the
+   environment ENV."
+
+
+  (let* ((levels (declaration-information 'optimize env))
+         (speed (or (second (assoc 'speed levels)) 1))
+         (safety (or (second (assoc 'safety levels)) 1))
+         (debug (or (second (assoc 'debug levels)) 1)))
+
+    (and (= speed 3)
+         (< safety 3)
+         (< debug 3)
+         (not
+          (eq 'notinline
+              (->> (function-information name env)
+                   (nth-value 2)
+                   (assoc 'inline)
+                   (cdr)))))))
+
+(defun should-check-types? (env)
+  "Returns true if CHECK-TYPE forms should be added in the body of
+   CALL-NEXT-METHOD. CHECK-TYPE forms are added if the priority of
+   the SAFETY optimize quality is greater than or equal to the SPEED
+   optimize quality in the environment ENV."
+
+  (let* ((optimize (declaration-information 'optimize env))
+         (safety (or (second (assoc 'safety optimize)) 1)))
+    (plusp safety)))
+
+
+;;; Inlining
+
+(defvar *current-gf* nil
+  "The name of the generic function currently being inlined/statically
+   dispatched.")
+
+(defvar *env* nil
+  "Environment in which the current generic function is being
+   statically dispatched.")
+
+(defvar *full-arg-list-form* nil
+  "Bound to a from which constructs the full argument list for use as
+   the default argument list in CALL-NEXT-METHOD.")
+
+(defvar *call-args* nil
+  "Bound to the argument list of the current generic function call.")
+
+(defstruct temp-method
+  "Represents a 'temporary' method created with MAKE-METHOD."
+
+  body)
+
+(defun inline-call (gf methods args types check-types)
+  "Inline a call to a generic-function with a given list of methods.
+
+   GF is the generic-function object, of the generic-function call to
+   inline.
+
+   METHODS is the sorted list of applicable method objects.
+
+   TYPES is the list of the types of the arguments.
+
+   CHECK-TYPES is a flag for whether, if true, type checks should be
+   inserted in the CALL-NEXT-METHOD local function definitions."
 
   (multiple-value-bind (bindings args declarations)
       (make-argument-bindings args types)
 
-    (labels
-	((make-before (methods &optional (types types) (args args))
-	   (when methods
-	     (make-aux-methods
-	      :before
-	      (first methods) args (rest methods)
-	      :check-types check-types
-	      :types types)))
+    `(let ,bindings
+       ,@(when declarations
+           `((declare ,@declarations)))
 
-	 (make-primary (before methods &optional (types types) (args args))
-	   (let ((form
-		  (primary-method-form methods types args)))
+       (static-dispatch-test-hook)
 
-	     (if before
-		 `(progn ,before ,form)
-		 form)))
+       ,(wrap-in-macros
+         (generic-function-name gf)
+         args
+         (compute-effective-method% gf methods args)
 
-	 (primary-method-form (methods types args)
-	   (match methods
-	     ((list* first rest)
-	      (make-primary-method-form
-	       first args rest
-	       :check-types check-types
-	       :types types))
-
-	     (_
-	      `(error 'no-primary-method-error
-		      :gf-name ',*current-gf*
-		      :args ,(if (listp args) (cons 'list args) args)))))
-
-	 (make-after (primary methods &optional (types types) (args args))
-	   (if methods
-	       `(prog1 ,primary
-		  ,(make-aux-methods
-		    :after
-		    (first methods) args (rest methods)
-		    :check-types check-types
-		    :types types))
-
-	       primary))
-
-	 (make-all (types before primary after &optional (args args))
-	   (-> (make-before before types args)
-	       (make-primary primary types args)
-	       (make-after after types args)))
-
-	 (make-around (around before primary after)
-	   (if around
-	       (make-primary-method-form
-		(first around) args (rest around)
-		:check-types check-types
-		:types types
-		:last-form (curry #'make-all nil before primary after))
-
-	       (make-all types before primary after))))
-
-      (let ((before (remove-if-not (curry #'eql :before) methods :key #'qualifier))
-	    (primary (remove-if-not #'null methods :key #'qualifier))
-	    (after (remove-if-not (curry #'eql :after) methods :key #'qualifier))
-	    (around (remove-if-not (curry #'eql :around) methods :key #'qualifier)))
-
-	`(let ,bindings
-	   ,@(when declarations
-	       `((declare ,@declarations)))
-
-	   ,(make-around around before primary after))))))
+         :types types
+         :check-types check-types))))
 
 (defun make-argument-bindings (args types)
   "Generating LET bindings which bind the arguments to variables.
@@ -686,142 +595,94 @@
 
        (finally (return (values bindings arg-list declarations)))))))
 
-(defun make-aux-methods (type method args next-methods &key check-types types)
-  "Return a form containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
+(defun wrap-in-macros (name args form &key types check-types)
+  "Wrap a form in the lexical CALL-METHOD and MAKE-METHOD macros.
 
-   METHOD is the first method to execute.
+   NAME is the name of the generic-function being statically
+   dispatched.
 
-   ARGS is the list of arguments or the name of the argument list
-   variable.
+   ARGS is the specifier for the arguments of the generic-function
+   call.
 
-   NEXT-METHODS is the list of the following methods to be executed.
+   FORM is the form which should be inserted in the body of the
+   MACROLET.
 
-   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
-   should be inserted.
+   TYPES is the argument type list.
 
-   TYPES is the list of the types of the arguments as determined from
-   the lexical environment."
+   CHECK-TYPES is a flag for whether type checks should be inserted in
+   the CALL-NEXT-METHOD definitions.
 
-  (with-gensyms (next-args)
-    `(flet ((call-next-method (&rest ,next-args)
-	      (declare (ignore ,next-args))
-	      (error 'illegal-call-next-method-error :method-type ,type))
+   Returns a MACROLET form."
 
-	    (next-method-p () nil))
-       (declare (ignorable #'call-next-method #'next-method-p))
+  (with-gensyms (method next expandedp env)
+    `(macrolet ((call-method (,method &optional ,next &environment ,env)
+                  (let ((*current-gf* ',name)
+                        (*full-arg-list-form* ',*full-arg-list-form*))
 
-       ,@(make-aux-method-body method args next-methods
-			       :check-types check-types
-			       :types types))))
+                    (when (consp ,method)
+                      (multiple-value-bind (,method ,expandedp)
+                          (macroexpand ,method ,env)
 
-(defun make-aux-method-body (method args next-methods &key check-types types)
-  "Return a list of forms containing the bodies of auxiliary (:BEFORE and :AFTER) methods inline.
+                        (when ,expandedp
+                          (return-from call-method `(call-method ,,method)))))
 
-   METHOD is the first method to execute.
+                    (etypecase ,method
+                      (method
+                       (inline-method-form
+                        ',name
+                        ,method
+                        ',args
+                        ,next
+                        :types ',types
+                        :check-types ',check-types))
 
-   ARGS is the list of arguments or the name of the argument list
-   variable.
+                      (temp-method
+                       (temp-method-body ,method)))))
 
-   NEXT-METHODS is the list of the following methods to be executed.
+                (make-method (,method)
+                  (make-temp-method :body ,method)))
 
-   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
-   should be inserted.
+       ,form)))
 
-   TYPES is the list of the types of the arguments as determined from
-   the lexical environment."
+(defun inline-method-form (name method args next-methods &key types check-types)
+  "Inline a method with the definitions of the CALL-NEXT-METHOD and NEXT-METHOD-P functions.
 
-  (destructuring-bind (&optional next-method &rest more-methods) next-methods
-    (list*
-     (aif (method-function-name *current-gf* (method-spec method) nil)
-	  (make-method-function-call it args)
-	  (make-inline-method-body method args types check-types))
+   NAME is the name of the generic-function.
 
-     (when next-method
-       (make-aux-method-body next-method args more-methods
-			     :check-types check-types
-			     :types types)))))
+   METHOD is the method object, of the method to inline.
 
-(defun make-primary-method-form (method args next-methods &key check-types types last-form)
-  "Return a form containing the bodies of the primary method inline.
+   ARGS is the specifier for the arguments to the generic-function call.
 
-   METHOD is the primary method to be executed.
+   NEXT-METHODS is the list of the next method objects.
 
-   ARGS is the list of arguments or the name of the argument list
-   variable.
+   TYPES is the argument type list.
 
-   NEXT-METHODS is the list of the following applicable primary
-   methods.
+   CHECK-TYPES if a flag for whether type checks should be inserted in
+   the CALL-NEXT-METHOD definition.
 
-   CHECK-TYPES is a boolean indicating whether CHECK-TYPES forms
-   should be inserted.
-
-   TYPES is the list of the types of the arguments as determined from
-   the lexical environment.
-
-   LAST-FORM is a function which is called to generate the body of the
-   CALL-NEXT-METHOD function of the last applicable method. The
-   function is called with one argument, the variable to which the
-   argument list is bound. If LAST-FORM is NIL a call to
-   NO-NEXT-METHOD is generated in the body of the last
-   CALL-NEXT-METHOD function."
+   Returns a form containing the inlined method with the lexical
+   CALL-NEXT-METHOD and NEXT-METHOD-P function definitions."
 
   (destructuring-bind (&optional next-method &rest more-methods) next-methods
-    (or (primary-method-function-call method args)
+    (with-gensyms (next-arg-var next-args)
+      `(flet ((call-next-method (&rest ,next-arg-var)
+                (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
+                  (declare (ignorable ,next-args))
 
-	(with-gensyms (next-arg-var next-args)
-	  `(flet ((call-next-method (&rest ,next-arg-var)
-		    (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
-		      (declare (ignorable ,next-args))
-		      ,(cond
-			 (next-method
-			  (make-primary-method-form
-			   next-method next-args more-methods
-			   :check-types check-types
-			   :last-form last-form))
+                  ,(if next-method
+                       (wrap-in-macros
+                        name
+                        next-args
+                        `(call-method ,next-method ,more-methods)
+                        :check-types check-types)
+                       `(apply #'no-next-method (fdefinition ',name) ,method ,next-args))))
 
-			 (last-form (funcall last-form next-args))
+              (next-method-p ()
+                ,(and next-method t)))
 
-			 (t
-			  `(apply #'no-next-method ',*current-gf* nil ,next-args)))))
-
-		  (next-method-p ()
-		    ,(and (or next-method last-form) t)))
-	     (declare (ignorable #'call-next-method #'next-method-p))
-
-	     ,(or (around-method-function-call method args)
-		  (make-inline-method-body method args types check-types)))))))
-
-(defun primary-method-function-call (method args)
-  "Return a FORM which calls the primary method function if any.
-
-   METHOD is the method, the function of which, to call.
-
-   ARGS is the method argument list.
-
-   Returns a form which calls the method function of the primary
-   method. If METHOD is not a primary method, but an :AROUND method,
-   or it has no method function, NIL is returned."
-
-  (with-slots (qualifier specializers) method
-    (unless qualifier
-      (when-let (name (method-function-name *current-gf* (method-spec method) nil))
-	(make-method-function-call name args)))))
-
-(defun around-method-function-call (method args)
-  "Return a FORM which calls the :AROUND method if any.
-
-   METHOD is the method, the function of which, to call.
-
-   ARGS is the method argument list.
-
-   Returns a form calls the method of the around method. If METHOD is
-   not an AROUND method, or it has no method function, NIL is
-   returned."
-
-  (with-slots (qualifier specializers) method
-    (when (eq qualifier :around)
-      (when-let (name (method-function-name *current-gf* (method-spec method) nil))
-	(make-method-function-call name args '(#'call-next-method #'next-method-p))))))
+         (declare (ignorable #'call-next-method #'next-method-p))
+         ,(-> (info-for-method name method)
+              (make-inline-method-body args types check-types))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -851,29 +712,6 @@
 		   (make-type-checks lambda-list specializers))
 
 	       ,@forms))))))
-
-(defun make-method-function-call (function args &optional extra)
-  "Generate call to the function which implements a method.
-
-   FUNCTION is the name of the function which implements the method.
-
-   ARGS is the argument specifier of the method. Either a list
-   containing the argument forms, or a symbol naming the variable in
-   which the argument list is stored.
-
-   EXTRA is a list of extra arguments to pass before ARGS.
-
-   Returns the function call form."
-
-  (etypecase args
-    (null
-     `(,function ,@extra ,@*call-args*))
-
-    (cons
-     `(,function ,@extra ,@args))
-
-    (symbol
-     `(apply #',function ,@extra ,args))))
 
 (defun destructure-args (args lambda-list body)
   "Destructure the argument list, based on the lambda-list, if possible.
@@ -1048,15 +886,6 @@
    to be of the type stored in the corresponding element of TYPES"
 
   `(declare ,@(mapcar (curry #'list 'type) types vars)))
-
-(defun should-check-types (env)
-  "Returns true if CHECK-TYPE forms should be added in the body of
-   CALL-NEXT-METHOD. CHECK-TYPE forms are added if the priority of
-   the SAFETY optimize quality is greater than or equal to the SPEED
-   optimize quality in the environment ENV."
-
-  (let ((optimize (declaration-information 'optimize env)))
-    (eql (second (assoc 'safety optimize)) 0)))
 
 (defun make-type-checks (vars types)
   "Returns a list of CHECK-TYPE forms for each variable in VARS and

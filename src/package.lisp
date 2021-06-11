@@ -45,16 +45,25 @@
         :cl-form-types)
 
   (:shadow :defmethod
-	   :defgeneric)
+	   :defgeneric
+           :define-method-combination
+
+           :call-method
+           :make-method
+           :invalid-method-error
+           :method-combination-error)
 
   (:export :defmethod
 	   :defgeneric
+           :define-method-combination
+
+           :call-method
+           :make-method
+           :invalid-method-error
+           :method-combination-error
 
 	   :enable-static-dispatch
-	   :static-dispatch
-
-	   :illegal-call-next-method-error
-	   :no-primary-method-error))
+	   :static-dispatch))
 
 (uiop:define-package :static-dispatch-cl
     (:use)

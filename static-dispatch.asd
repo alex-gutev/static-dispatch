@@ -34,6 +34,8 @@
 		:components
 		((:file "package")
 		 (:file "util")
+                 (:file "combin")
+                 (:file "combinations")
 		 (:file "common")
 		 (:file "method-functions")
 		 (:file "default" :if-feature (:not :sbcl))

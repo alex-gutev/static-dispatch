@@ -45,27 +45,6 @@
      `(progn
         ,@(make-static-overload-functions name)))))
 
-(defun should-transform? (node specializers)
-  "Checks whether the transform should be applied for a given compilation NODE.
-
-   If SPECIALIZERS contains a T specializer and the corresponding
-   argument type is of type T, which implies the type is undetermined
-   the transform is not performed. Otherwise it is performed."
-
-  (let ((t-type (sb-kernel:specifier-type t)))
-    (flet ((is-t? (specializer type)
-	     (and (eq specializer t)
-		  (sb-kernel:type= type t-type))))
-
-      (with-accessors ((args sb-c::combination-args))
-	  node
-
-	(when (and (sb-c::combination-p node)
-		   (every #'sb-c::lvar-p args))
-
-	  (->> (mapcar #'sb-c::lvar-type args)
-	       (notany #'is-t? specializers)))))))
-
 
 ;;; Generating DEFTRANSFORM's
 
@@ -252,21 +231,21 @@
   whole)
 
 (defun static-overload (name args types node)
-  (when (fboundp name)
-    (let ((*current-gf* name)
-	  (gf (fdefinition name)))
+  (handler-case
+      (progn
+        (unless (and (fboundp name)
+                     (typep (fdefinition name) 'generic-function))
+          (error "~s is not a generic function." name))
 
-      (let* ((precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	     (types (order-by-precedence precedence types))
-	     (methods (-<> (aand (gf-methods name) (hash-table-alist it))
-			   (order-method-specializers precedence)
-			   (applicable-methods types)
-			   (sort-methods)
-			   (mapcar #'cdr <>))))
-	(when methods
-	  `(progn
-	     (static-dispatch-test-hook)
-	     ,(inline-methods methods args (sb-c:policy node (> safety 0)) types)))))))
+        (let* ((gf (fdefinition name))
+               (methods (compute-applicable-methods% name types)))
+
+          (when methods
+            (inline-call gf methods args types (sb-c:policy node (> safety 0))))))
+
+    (error (e)
+      (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
+      nil)))
 
 
 ;;; Utilities
