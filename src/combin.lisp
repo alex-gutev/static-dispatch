@@ -282,16 +282,32 @@
 
   (declare (optimize (debug 3)))
   (with-gensyms (methods options args)
-    (labels ((bind-group (group)
-               (destructuring-bind (var &rest options) group
-                 (multiple-value-bind (patterns required order)
-                     (parse-group-options options)
+    (labels ((bind-groups (groups body)
+               (multiple-value-bind (forms decls)
+                   (parse-body body)
 
-                   (with-gensyms (sorted)
-                     `(,var (let ((,sorted (sort-combin-methods ,methods ',patterns ,order)))
-                              (when (and ,required (null ,sorted))
-                                (error 'combin-missing-required :combination ',name :group-spec ',group))
-                              ,sorted))))))
+                 (loop
+                    for (var . options) in groups
+                    for (patterns required order) =
+                      (multiple-value-list (parse-group-options options))
+
+                    collect var into group-vars
+                    collect patterns into group-patterns
+                    collect (or order :most-specific-first) into orders
+                    collect `(when (and ,required (null ,var))
+                               (error 'combin-missing-required
+                                      :combination ',name
+                                      :group-spec ',(cons var options)))
+                    into checks
+
+                    finally
+                      (return
+                        `(destructuring-bind ,group-vars
+                             (group-combin-methods ,methods ',group-patterns (list ,@orders))
+
+                           ,@decls
+                           ,@checks
+                           ,@forms)))))
 
              (parse-group-options (options)
                (loop
@@ -346,7 +362,18 @@
                (mapcar #'gensym-var vars))
 
              (gensym-var (var)
-               (cons var (gensym (symbol-name var)))))
+               (cons var (gensym (symbol-name var))))
+
+             (make-destructure-args (gf lambda-list gensyms body)
+               (multiple-value-bind (forms decl)
+                   (parse-body body)
+
+                 `((destructure-combin-lambda-list
+                    ,gf ',lambda-list ',gensyms ,args
+
+                    (let ,(loop for (arg . gs) in gensyms collect `(,arg ',gs))
+                      ,@decl
+                      ,@forms))))))
 
       (match body
         ((or (list* (list* :arguments arg-lambda-list)
@@ -361,58 +388,80 @@
               `(lambda (,gf ,options ,methods ,args)
                  (declare (ignorable ,gf ,options ,args))
                  (block ,name
-                   (destructuring-bind ,lambda-list ,options
-                     (let (,@(mapcar #'bind-group group-specs))
-                       ,(if arg-lambda-list
-                            (let ((gensyms (gensym-vars arg-lambda-list)))
-                              `(destructure-combin-lambda-list ,gf ',arg-lambda-list ',gensyms ,args (progn ,@body)))
+                   (let ((*current-method-combination*
+                          (cons (generic-function-name ,gf) ',name)))
 
-                            `(progn ,@body))))))))))))))
+                     (destructuring-bind ,lambda-list ,options
+                       ,(bind-groups
+                         group-specs
+                         (if arg-lambda-list
+                             (let ((gensyms (gensym-vars arg-lambda-list)))
+                               (make-destructure-args gf lambda-list gensyms body))
 
-(defun sort-combin-methods (methods patterns order)
-  "Filter and sort the methods applying to a group specifier.
+                             body))))))))))))))
 
-   METHODS is the list of all applicable methods.
+(defun group-combin-methods (methods groups orders)
+  "Group the methods according to the method-combination group specifier
 
-   PATTERNS is the group specifier's patterns.
+   METHODS is the list of generic-function methods.
 
-   ORDER is one of :MOST-SPECIFIC-FIRST indicating most-specific
-   methods are ordered first, and :MOST-SPECIFIC-LAST indicating
-   least-specific methods are ordered first.
+   GROUPS is the list of patterns of each method group specifier
 
-   Returns the filtered and sorted method list."
+   ORDERS is a list specifying the order, by which the methods should
+   be ordered, of each group specifier."
 
-  (labels ((in-group? (qualifiers)
-             (some (curry #'matches-pattern? qualifiers) patterns))
+  (let ((grouped (make-list (length groups) :initial-element nil)))
+    (labels ((add-to-group (method)
+               (loop
+                  with qualifiers = (method-qualifiers method)
+                  for i from 0
+                  for patterns in groups
+                  do
+                    (when (in-group? qualifiers patterns)
+                      (push method (nth i grouped))
+                      (return-from add-to-group)))
 
-           (matches-pattern? (qualifiers pattern)
-             (match pattern
-               ((and (type symbol)
-                     (not '*)
-                     (not nil))
+               (invalid-method-error method "Method qualifiers %s not applicable to any group."
+                                     (method-qualifiers method)))
 
-                (funcall pattern qualifiers))
+             (in-group? (qualifiers patterns)
+               (some (curry #'matches-pattern? qualifiers) patterns))
 
-               (_ (matches? qualifiers pattern))))
+             (matches-pattern? (qualifiers pattern)
+               (match pattern
+                 ((and (type symbol)
+                       (not '*)
+                       (not nil))
 
-           (matches? (qualifiers pattern)
-             (match* (pattern qualifiers)
-               (('* _) t)
-               ((nil nil) t)
+                  (funcall pattern qualifiers))
 
-               (((type symbol) (type symbol))
-                (eql pattern qualifiers))
+                 (_ (matches? qualifiers pattern))))
 
-               (((list* pfirst prest)
-                 (list* qualifier qualifiers))
+             (matches? (qualifiers pattern)
+               (match* (pattern qualifiers)
+                 (('* _) t)
+                 ((nil nil) t)
 
-                (and (matches? qualifier pfirst)
-                     (matches? qualifiers prest))))))
+                 (((type symbol) (type symbol))
+                  (eql pattern qualifiers))
 
-    (let ((methods (remove-if-not #'in-group? methods :key #'method-qualifiers)))
-      (if (eq order :most-specific-last)
-          (reverse methods)
-          methods))))
+                 (((list* pfirst prest)
+                   (list* qualifier qualifiers))
+
+                  (and (matches? qualifier pfirst)
+                       (matches? qualifiers prest))))))
+
+      (mapc #'add-to-group methods)
+
+      (loop
+         for methods in grouped
+         for order in orders
+         collect
+           (progn
+             (check-type order (member :most-specific-first :most-specific-last))
+             (if (eq order :most-specific-first)
+                 (reverse methods)
+                 methods))))))
 
 (defun destructure-combin-lambda-list (gf lambda-list gensyms args body)
   "Emit a form which destructures the argument list in a method-combination.
