@@ -210,7 +210,7 @@
 
 (defun method-combination-error (control &rest args)
   (if *current-method-combination*
-      (destructuring-bind (gf . combination) *current-gf*
+      (destructuring-bind (gf . combination) *current-method-combination*
         (error 'user-method-combination-error
                :gf-name gf
                :combination combination
@@ -220,7 +220,7 @@
 
 (defun invalid-method-error (method control &rest args)
   (if *current-method-combination*
-      (destructuring-bind (gf . combination) *current-gf*
+      (destructuring-bind (gf . combination) *current-method-combination*
         (error 'user-invalid-method-error
                :gf-name gf
                :combination combination
