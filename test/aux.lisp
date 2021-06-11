@@ -100,10 +100,10 @@
   (locally (declare (inline foo) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print
      (handler-case (foo "x")
-       (no-primary-method-error () nil))
-     "FOO Before: x")
+       (error () nil))
+     "")
 
-    (test-error (foo 1) no-primary-method-error)))
+    (test-error (foo 1) error)))
 
 (test (after-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AFTER method without primary method"
@@ -111,17 +111,17 @@
   (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print
      (handler-case (bar 1)
-       (no-primary-method-error () nil))
+       (error () nil))
      "")
 
-    (test-error (bar 5) no-primary-method-error)))
+    (test-error (bar 5) error)))
 
 (test (around-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AROUND method without primary method"
 
   (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
-    (test-error (bar "hello") no-primary-method-error)
-    (test-error (bar 10) no-primary-method-error)))
+    (test-error (bar "hello") error)
+    (test-error (bar 10) error)))
 
 (test (before-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :BEFORE method"
@@ -132,10 +132,10 @@
     (is-print
      (handler-case
 	 (baz 1)
-       (illegal-call-next-method-error () nil))
+       (error () nil))
      "BAZ Before INTEGER: 1 NIL. ")
 
-    (test-error (baz 14) illegal-call-next-method-error)))
+    (test-error (baz 14) error)))
 
 (test (after-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :AFTER method"
@@ -147,8 +147,8 @@
     (is-print
      (handler-case
 	 (baz "abcd")
-       (illegal-call-next-method-error () nil))
+       (error () nil))
 
      "BAZ Before all: abcd NIL. BAZ After ARRAY: abcd NIL. BAZ After STRING: abcd NIL. ")
 
-    (test-error (baz "xyz") illegal-call-next-method-error)))
+    (test-error (baz "xyz") error)))
