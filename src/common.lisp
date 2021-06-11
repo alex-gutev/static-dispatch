@@ -681,8 +681,10 @@
                 ,(and next-method t)))
 
          (declare (ignorable #'call-next-method #'next-method-p))
-         ,(-> (info-for-method name method)
-              (make-inline-method-body args types check-types))))))
+         ,(let ((info (info-for-method name method)))
+            (if-let (fn (method-function-name name info nil))
+              (make-method-function-call fn args `(#'call-next-method ,(and next-method t)))
+              (make-inline-method-body info args types check-types)))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
@@ -712,6 +714,29 @@
 		   (make-type-checks lambda-list specializers))
 
 	       ,@forms))))))
+
+(defun make-method-function-call (function args &optional extra)
+  "Generate call to the function which implements a method.
+
+   FUNCTION is the name of the function which implements the method.
+
+   ARGS is the argument specifier of the method. Either a list
+   containing the argument forms, or a symbol naming the variable in
+   which the argument list is stored.
+
+   EXTRA is a list of extra arguments to pass before ARGS.
+
+   Returns the function call form."
+
+  (etypecase args
+    (null
+     `(,function ,@extra ,@*call-args*))
+
+    (cons
+     `(,function ,@extra ,@args))
+
+    (symbol
+     `(apply #',function ,@extra ,args))))
 
 (defun destructure-args (args lambda-list body)
   "Destructure the argument list, based on the lambda-list, if possible.

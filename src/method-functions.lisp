@@ -109,87 +109,8 @@
 
    Returns a DEFUN form for the method."
 
-  (with-slots (qualifier specializers) method
-    (ecase qualifier
-      ((:before :after)
-       (make-aux-method-function gf-name method))
-
-      (:around
-       (make-around-method-function gf-name method))
-
-      ((nil)
-       (make-primary-method-function gf-name method)))))
-
-(defun make-aux-method-function (gf-name method)
-  "Generate a BEFORE/AFTER method function definition.
-
-   GF-NAME is the name of the generic function.
-
-   METHOD is the `METHOD-INFO' object of the method for which to
-   generate a method function definition.
-
-   Returns a DEFUN form, for the method function."
-
-  (with-slots (qualifier lambda-list) method
-    (assert (member qualifier '(:before :after)) (qualifier) "MAKE-AUX-METHOD-FUNCTION called on a non-BEFORE/AFTER method: ~a" qualifier)
-
-    (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
-	(lambda-list->arg-list-form lambda-list)
-
-      (let ((*method-functions* (copy-hash-table *method-functions*))
-	    (name (method-function-name gf-name (method-spec method))))
-
-	(remhash (cons gf-name (method-spec method)) *method-functions*)
-
-	`(defun ,name ,lambda-list
-	   (declare (ignorable ,@ignore))
-	   (static-method-function-test-hook)
-	   ,(make-aux-methods qualifier method nil nil :check-types t))))))
-
-(defun make-primary-method-function (gf-name method)
-  "Generate a primary method function definition.
-
-   GF-NAME is the name of the generic function.
-
-   METHOD is the `METHOD-INFO' object of the method for which to
-   generate a method function definition.
-
-   Returns a DEFUN form, for the method function."
-
-  (with-slots (qualifier specializers lambda-list) method
-    (assert (null qualifier) (qualifier) "MAKE-PRIMARY-METHOD-FUNCTION called on a non-primary method: ~a" qualifier)
-
-    (let ((methods (-<> (methods-for-types gf-name specializers nil)
-			(remove nil <> :key #'qualifier :test-not #'eql))))
-      (assert methods (methods) "No applicable methods for specializers: ~a" specializers)
-
-      (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
-	  (lambda-list->arg-list-form lambda-list)
-
-	(let ((*method-functions* (copy-hash-table *method-functions*))
-	      (name (method-function-name gf-name (method-spec method))))
-
-	  (remhash (cons gf-name (method-spec method)) *method-functions*)
-
-	  `(defun ,name ,lambda-list
-	     (declare (ignorable ,@ignore))
-	     (static-method-function-test-hook)
-	     ,(inline-methods methods nil t)))))))
-
-(defun make-around-method-function (gf-name method)
-  "Generate an around method function definition form.
-
-   GF-NAME is the name of the generic function.
-
-   METHOD is the `METHOD-INFO' object of the method for which to
-   generate a method function definition.
-
-   Returns a DEFUN form, for the method function."
-
-  (with-slots (qualifier specializers lambda-list) method
-    (assert (eq qualifier :around) (qualifier) "MAKE-AROUND-METHOD-FUNCTION called on a non-AROUND method: ~a" qualifier)
-
-    (let ((name (method-function-name gf-name (list qualifier specializers))))
+  (with-slots (lambda-list) method
+    (let ((name (method-function-name gf-name (method-spec method))))
       (with-gensyms (call-next-method next-method-p next-arg-var)
 
 	(multiple-value-bind (lambda-list *full-arg-list-form* ignore)
@@ -203,7 +124,7 @@
 		      (apply ,call-next-method ,next-arg-var))
 
 		    (next-method-p ()
-		      (funcall ,next-method-p)))
+		      ,next-method-p))
 	       (declare (ignorable #'call-next-method #'next-method-p))
 
 	       ,(make-inline-method-body method nil nil t))))))))
