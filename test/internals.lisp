@@ -50,7 +50,7 @@
    :body
    :lambda-list
    :specializers
-   :qualifier
+   :qualifiers
 
    :precedence-order
    :order-by-precedence
@@ -60,8 +60,12 @@
    :specializer<
 
    :*current-gf*
-   :inline-methods
-   :block-name))
+   :find-method%
+   :inline-call
+   :inline-method-form
+   :info-for-method
+   :block-name
+   :static-dispatch-test-hook))
 
 (in-package :static-dispatch/test.internals)
 
@@ -148,7 +152,7 @@
   "Test parsing :BEFORE qualifiers"
 
   (test-parse
-   '(:before
+   '((:before)
      (t number character)
      (a b c)
 
@@ -157,11 +161,18 @@
 
    '(:before (a (b number) (c character)) (pprint c) (+ a b))))
 
-(test defmethod-unsupported-qualifier-error
-  "Test error signalled when parsing unsupported qualifier"
+(test defmethod-parse-multiple-qualifiers
+  "Test parsing :BEFORE qualifiers"
 
-  (signals optima:match-error
-    (parse-method '(and (a (b number) (c character)) (pprint c) (+ a b)))))
+  (test-parse
+   '((qual1 qual2 qual3 :around)
+     (t number character)
+     (a b c)
+
+     ((pprint c)
+      (+ a b)))
+
+   '(qual1 qual2 qual3 :around (a (b number) (c character)) (pprint c) (+ a b))))
 
 
 ;;; DEFMETHOD Macro Tests
@@ -185,11 +196,6 @@
 
 (define-symbol-macro equal?-method4
     '(static-dispatch:defmethod equal? :before ((x integer) y)
-      (pprint x)
-      (pprint y)))
-
-(define-symbol-macro equal?-method5
-    '(static-dispatch:defmethod equal-2 and (x y)
       (pprint x)
       (pprint y)))
 
@@ -221,14 +227,14 @@
 	method-info)
 
     (is (equal '(a b) (lambda-list method-info)))
-    (is (equal nil (qualifier method-info)))
+    (is (equal nil (qualifiers method-info)))
     (is (equal '(number number) (specializers method-info)))
     (is (equal (cdddr equal?-method1) (body method-info)))))
 
 (test (defmethod-non-specialized-method :fixture method-table
 	:depends-on defmethod-specialized-method)
 
-  "test DEFMETHOD without specialized arguments"
+  "Test DEFMETHOD without specialized arguments"
 
   ;; Expand previous methods
   (eval-method equal?-method1)
@@ -250,7 +256,7 @@
 	method-info)
 
     (is (equal '(a b) (lambda-list method-info)))
-    (is (equal nil (qualifier method-info)))
+    (is (equal nil (qualifiers method-info)))
     (is (equal '(t t) (specializers method-info)))
     (is (equal (cdddr equal?-method2) (body method-info)))))
 
@@ -278,7 +284,7 @@
 	method-info)
 
     (is (equal '(x y) (lambda-list method-info)))
-    (is (equal nil (qualifier method-info)))
+    (is (equal nil (qualifiers method-info)))
     (is (equal '((eql all) t) (specializers method-info)))
     (is (equal (cdddr equal?-method3) (body method-info)))))
 
@@ -308,56 +314,15 @@
   (is (typep (gf-method 'equal? '(nil ((eql all) t))) 'method-info)
       "Method for (NIL (EQL ALL) T) no longer in method table.")
 
-  (let ((method-info (gf-method 'equal? '(:before (integer t)))))
+  (let ((method-info (gf-method 'equal? '((:before) (integer t)))))
     (is (typep method-info 'method-info)
 	"Method for (:BEFORE (INTEGER T)) not a `METHOD-INFO' object. Got: ~a~%"
 	method-info)
 
     (is (equal '(x y) (lambda-list method-info)))
-    (is (equal :before (qualifier method-info)))
+    (is (equal '(:before) (qualifiers method-info)))
     (is (equal '(integer t) (specializers method-info)))
     (is (equal (cddddr equal?-method4) (body method-info)))))
-
-(test (defmethod-unsupported-qualifier
-	  :fixture method-table
-	:depends-on (and defmethod-specialized-method
-			 defmethod-non-specialized-method
-			 defmethod-eql-specializer
-			 defmethod-before-qualifier))
-
-  "Test DEFMETHOD with unsupported qualifier"
-
-  ;; Expand previous methods
-  (eval-method equal?-method1)
-  (eval-method equal?-method2)
-  (eval-method equal?-method3)
-  (eval-method equal?-method4)
-
-  ;; Copy over generic function table from equal?
-
-  (setf (gethash 'equal-2 *generic-function-table*)
-	(gf-methods 'equal?))
-
-  (eval-method '(static-dispatch:defgeneric equal-2 (x y)
-		 (:method-combination and)))
-
-  (eval-method equal?-method5)
-
-  ;; Check that the method table for equal-2 was removed as
-  ;; method combinations are not supported.
-
-  (is-false (gf-methods 'equal-2)
-	    "Method table for EQUAL-2 not removed.")
-
-  ;; Check that even if a new method with no qualifiers is defined,
-  ;; the method table will not be recreated.
-
-  (eval-method '(static-dispatch:defmethod equal-2 (x y)
-		 (pprint x)
-		 (pprint y)))
-
-  (is-false (gf-methods 'equal-2)
-	    "New method added to removed method table for EQUAL-2"))
 
 
 ;;; Specializer Ordering Tests
@@ -426,19 +391,19 @@
 (define-symbol-macro method-order-test-methods
     (mapcar
      #'list
-     '((nil (number t))
-       (:before (character t))
-       (nil (character character))
-       (nil (t t))
-       (nil (hash-table t))
-       (nil (person person))
-       (nil (integer t))
-       (nil (t (eql 1)))
-       (nil ((eql x) t))
-       (nil ((eql x) string))
-       (:before (number number))
-       (nil (person child))
-       (:before (integer t)))))
+     '((number t)
+       (character t)
+       (character character)
+       (t t)
+       (hash-table t)
+       (person person)
+       (integer t)
+       (t (eql 1))
+       ((eql x) t)
+       ((eql x) string)
+       (number number)
+       (person child)
+       (integer t))))
 
 (test method-order-specializer-order
   "Test method ordering based on specializer ordering"
@@ -446,20 +411,20 @@
   (is (equal
        (mapcar
 	#'list
-	'((:before (character t))
-	  (:before (integer t))
-	  (:before (number number))
-	  (nil ((eql x) string))
-	  (nil ((eql x) t))
-	  (nil (character character))
-	  (nil (person child))
-	  (nil (person person))
-	  (nil (hash-table t))
-	  (nil (integer t))
-	  (nil (number t))
+	'(((eql x) string)
+	  ((eql x) t)
+	  (character character)
+	  (person child)
+	  (person person)
+          (character t)
+	  (hash-table t)
+	  (integer t)
+	  (integer t)
+	  (number number)
+	  (number t)
 
-	  (nil (t (eql 1)))
-	  (nil (t t))))
+	  (t (eql 1))
+	  (t t)))
 
        (sort-methods method-order-test-methods))))
 
@@ -469,20 +434,20 @@
   (is (equal
        (mapcar
 	#'list
-	'((nil (number t))
-	  (nil (t t))
-	  (nil (integer t))
-	  (:before (number number))
-	  (:before (integer t))))
+	'((number t)
+	  (t t)
+	  (integer t)
+	  (number number)
+	  (integer t)))
 
        (applicable-methods method-order-test-methods '(integer integer))))
 
   (is (equal
        (mapcar
 	#'list
-	'((nil (number t))
-	  (nil (t t))
-	  (:before (number number))))
+	'((number t)
+	  (t t)
+	  (number number)))
 
        (applicable-methods method-order-test-methods '(number number))))
 
@@ -493,33 +458,33 @@
   (is (equal
        (mapcar
 	#'list
-	'((nil (t t))
-	  (nil (hash-table t))))
+	'((t t)
+	  (hash-table t)))
 
        (applicable-methods method-order-test-methods '(hash-table t))))
 
   (is (equal
        (mapcar
 	#'list
-	'((nil (t t))
-	  (nil (person person))
-	  (nil (person child))))
+	'((t t)
+	  (person person)
+	  (person child)))
 
        (applicable-methods method-order-test-methods '(child child))))
 
   (is (equal
        (mapcar
 	#'list
-	'((nil (t t))
-	  (nil (person person))))
+	'((t t)
+	  (person person)))
 
        (applicable-methods method-order-test-methods '(child person))))
 
   (is (equal
        (mapcar
 	#'list
-	'((nil (t t))
-	  (nil ((eql x) t))))
+	'((t t)
+	  ((eql x) t)))
 
        (applicable-methods method-order-test-methods '((eql x) number))))
 
@@ -544,20 +509,31 @@
 
   ;; Test ORDER-METHOD-SPECIALIZERS function
 
-  (is (equal
-       (mapcar
-	#'list
-	'((nil (character number t))
-	  (:before (t integer t))
-	  (nil (t t t))))
+  (let* ((name (gensym "TEMP-GF"))
+         (methods
+          (eval
+           `(progn
+              (defgeneric ,name (a b c)
+                (:argument-precedence-order c a b))
 
-       (order-method-specializers
-	(mapcar
-	 #'list
-	 '((nil (number t character))
-	   (:before (integer t t))
-	   (nil (t t t))))
-	'(2 0 1)))))
+              (list
+               (defmethod ,name ((x number) y (z character))
+                 (list :m1 x y z))
+
+               (defmethod ,name :before ((a integer) b c)
+                          (list :m2 a b c))
+
+               (defmethod ,name (d e f)
+                 (list :default d e f)))))))
+    (is (equal
+         (mapcar
+          #'cons
+	  '((character number t)
+	    (t integer t)
+	    (t t t))
+          methods)
+
+         (order-method-specializers methods '(2 0 1))))))
 
 
 ;;; Test Method Inlining
@@ -575,10 +551,14 @@
      (and (form= eh gh)
 	  (form= et gt)))
 
+    ((_ (guard expected
+               (and (symbolp expected)
+                    (starts-with #\$ (symbol-name expected)))))
+
+     (equal got (ensure-gethash expected *gensym-map* got)))
+
     (((type symbol) (type symbol))
-     (if (starts-with #\$ (symbol-name expected))
-	 (eq got (ensure-gethash expected *gensym-map* got))
-	 (eq got expected)))
+     (eq got expected))
 
     ((_ _) (equal got expected))))
 
@@ -586,31 +566,25 @@
   `(let ((*gensym-map* (make-hash-table :test #'eq)))
      (is (form= ,expected ,got) ,@args)))
 
-(define-symbol-macro method-inlining-method1
-    (make-instance 'method-info
-		   :body '((= a b))
-		   :lambda-list '(a b &optional (c (* a b)))
-		   :qualifier nil
-		   :specializers '(number number)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defgeneric my-equal (x y &optional z))
 
-(define-symbol-macro method-inlining-method2
-    (make-instance 'method-info
-		   :body '((eq x y))
-		   :lambda-list '(x y &optional c)
-		   :qualifier nil
-		   :specializers '(t t)))
+  (defmethod my-equal ((a number) (b number) &optional (c (* a b)))
+    (declare (ignore c))
+    (= a b))
 
-(define-symbol-macro method-inlining-method3
-    (make-instance 'method-info
-		   :body '((pprint n1)
-			   (pprint n2))
-		   :lambda-list '(n1 n2 &optional (z 'x z-sp))
-		   :qualifier :before
-		   :specializers '(number t)))
+  (defmethod my-equal (x y &optional c)
+    (declare (ignore c))
+    (eq x y))
 
-(def-fixture inlining-equal? ()
+  (defmethod my-equal :before ((n1 number) n2 &optional (z 'x z-sp))
+    (declare (ignore z))
+    (pprint n1)
+    (pprint n2)))
+
+(def-fixture inlining-my-equal ()
   (let ((*check-types*)
-	(*current-gf* 'equal?))
+	(*current-gf* 'my-equal))
     (declare (special *check-types*))
     (&body)))
 
@@ -620,521 +594,632 @@
   (is (equal 'equal? (block-name 'equal?)))
   (is (equal 'field (block-name '(setf field)))))
 
-;; Test the output of the INLINE-METHODS function
 
-(test (method-inline-one-next-method :fixture inlining-equal?)
+;; Test the output of the INLINE-METHOD-FORM function
+
+(test (method-inline-one-next-method :fixture inlining-my-equal)
   "Test method inlining with one next method"
 
-  (is-form
-   '(let (($a1 (+ u v)))
-     (declare (type integer $a1))
+  (let ((method1 (find-method% #'my-equal nil '(number number)))
+        (method2 (find-method% #'my-equal nil '(t t))))
 
-     (flet ((call-next-method (&rest $args1)
-	      (let (($next1 (or $args1 (list $a1 3))))
-		(declare (ignorable $next1))
-		(flet ((call-next-method (&rest $args2)
-			 (let (($next2 (or $args2 $next1)))
-			   (declare (ignorable $next2))
-			   (apply #'no-next-method 'equal? nil $next2)))
+    (is-form
+     `(let (($a1 (+ u v)))
+        (declare (type integer $a1))
 
-		       (next-method-p () nil))
+        (static-dispatch-test-hook)
 
-		  (declare (ignorable #'call-next-method #'next-method-p))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-		  (block equal?
-		    (destructuring-bind (x y &optional c) $next1
-		      (declare (ignorable x y))
-		      (eq x y))))))
+          (call-method ,method1 (,method2))))
 
-	    (next-method-p () t))
-       (declare (ignorable #'call-next-method #'next-method-p))
+     (inline-call
+      #'my-equal
+      (list method1 method2)
+      '((+ u v) 3)
+      '(integer integer)
+      nil))
 
-       (block equal?
-	 (let* ((a $a1)
-		(b 3)
-		(c (* a b)))
+    (is-form
+     `(flet ((call-next-method (&rest $args1)
+               (let (($next1 (or $args1 (list g1 3))))
+                 (declare (ignorable $next1))
+                 (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                            (make-method ($method) . $make-method-def))
 
-	   (declare (ignorable a b))
-	   (declare (type integer a) (type integer b))
+                   (call-method ,method2 nil))))
 
-	   (= a b)))))
+             (next-method-p () t))
+        (declare (ignorable #'call-next-method #'next-method-p))
 
-   (inline-methods (list method-inlining-method1 method-inlining-method2)
-		   '((+ u v) 3) nil '(integer integer))))
+        (block my-equal
+          (let* ((a g1)
+                 (b 3)
+                 (c (* a b)))
 
-(test (method-inline-no-next-methods :fixture inlining-equal?)
+            (declare (ignorable a b))
+            (declare (type integer a) (type integer b))
+            (declare (ignore c))
+
+            (= a b))))
+
+     (inline-method-form
+      'my-equal
+      method1
+      '(g1 3)
+      (list method2)
+      :types '(integer integer)
+      :check-types nil))))
+
+(test (method-inline-no-next-methods :fixture inlining-my-equal)
   "Test method inlining with no next methods"
 
-  (is-form
-   '(let (($a1 y)
-	  ($a2 z))
+  (let ((method (find-method% #'my-equal nil '(t t))))
 
-     (flet ((call-next-method (&rest $args)
-	      (let (($next (or $args (list $a1 $a2))))
-		(declare (ignorable $next))
-		(apply #'no-next-method 'equal? nil $next)))
+    (is-form
+     `(let (($a1 (+ u v)))
+        (declare (type integer $a1))
 
-	    (next-method-p () nil))
-       (declare (ignorable #'call-next-method #'next-method-p))
+        (static-dispatch-test-hook)
 
-       (block equal?
-	 (let* ((x $a1)
-		(y $a2)
-		(c nil))
-	   (declare (ignorable x y))
-	   (check-type x t)
-	   (check-type y t)
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	   (eq x y)))))
+          (call-method ,method nil)))
 
-   (inline-methods (list method-inlining-method2) '(y z) t)))
+     (inline-call
+      #'my-equal
+      (list method)
+      '((+ u v) 3)
+      '(integer integer)
+      nil))
 
-(test (method-inline-with-type-checks :fixture inlining-equal?)
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list g1 g2))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition 'my-equal) ,method $next)))
+
+	     (next-method-p () nil))
+        (declare (ignorable #'call-next-method #'next-method-p))
+
+        (block my-equal
+	  (let* ((x g1)
+		 (y g2)
+		 (c nil))
+	    (declare (ignorable x y))
+            (declare (ignore c))
+	    (check-type x t)
+	    (check-type y t)
+
+	    (eq x y))))
+
+     (inline-method-form 'my-equal method '(g1 g2) nil :check-types t))))
+
+(test (method-inline-with-type-checks :fixture inlining-my-equal)
   "Test method inlining with type checks"
 
-  (is-form
-   '(let (($a1 (+ u v))
-	  ($a3 arg))
-     (declare (type number $a1))
+  (let ((method (find-method% #'my-equal nil '(t t))))
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args next-args)))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition 'my-equal) ,method $next)))
 
-     (flet ((call-next-method (&rest $args1)
-	      (let (($next1 (or $args1 (list $a1 3 $a3))))
-		(declare (ignorable $next1))
-		(flet ((call-next-method (&rest $args2)
-			 (let (($next2 (or $args2 $next1)))
-			   (declare (ignorable $next2))
-			   (apply #'no-next-method 'equal? nil $next2)))
+	     (next-method-p () nil))
+        (declare (ignorable #'call-next-method #'next-method-p))
 
-		       (next-method-p () nil))
+        (block my-equal
+          (destructuring-bind (x y &optional c) next-args
+	    (declare (ignorable x y))
+            (declare (ignore c))
+	    (check-type x t)
+	    (check-type y t)
 
-		  (declare (ignorable #'call-next-method #'next-method-p))
+	    (eq x y))))
 
-		  (block equal?
-		    (destructuring-bind (x y &optional c) $next1
-		      (declare (ignorable x y))
-		      (check-type x t)
-		      (check-type y t)
-		      (eq x y))))))
+     (inline-method-form 'my-equal method 'next-args nil :check-types t))))
 
-	    (next-method-p () t))
-
-       (declare (ignorable #'call-next-method #'next-method-p))
-
-       (block equal?
-	 (let* ((a $a1)
-		(b 3)
-		(c $a3))
-
-	   (declare (ignorable a b))
-	   (declare (type number a) (type number b))
-
-	   (= a b)))))
-
-   (inline-methods (list method-inlining-method1 method-inlining-method2)
-		   '((+ u v) 3 arg) t '(number number))))
-
-(test (method-inline-with-before-method :fixture inlining-equal?)
+(test (method-inline-with-before-method :fixture inlining-my-equal)
   "Test method inlining with :BEFORE method"
 
-  (is-form
-   '(let (($a1 (f x))
-	  ($a2 (* z 4)))
-     (declare (type fixnum $a1)
-      (type integer $a2))
+  (let ((method1 (find-method% #'my-equal nil '(number number)))
+        (method2 (find-method% #'my-equal '(:before) '(number t)))
+        (method3 (find-method% #'my-equal nil '(t t))))
 
-     (progn
-       (flet ((call-next-method (&rest $args1)
-		(declare (ignore $args1))
-		(error 'illegal-call-next-method-error :method-type :before))
+    (is-form
+     `(let (($a1 (f x)) ($a2 (* z 4)))
+        (declare (type fixnum $a1)
+                 (type integer $a2))
 
-	      (next-method-p () nil))
-	 (declare (ignorable #'call-next-method #'next-method-p))
+        (static-dispatch-test-hook)
 
-	 (block equal?
-	   (let* ((n1 $a1) (n2 $a2) (z 'x) (z-sp nil))
-	     (declare (ignorable n1 n2))
-	     (declare (type fixnum n1) (type integer n2))
-	     (pprint n1)
-	     (pprint n2))))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-       (flet ((call-next-method (&rest $args2)
-		(let (($next2 (or $args2 (list $a1 $a2))))
-		  (declare (ignorable $next2))
-		  (flet ((call-next-method (&rest $args3)
-			   (let (($next3 (or $args3 $next2)))
-			     (declare (ignorable $next3))
-			     (apply #'no-next-method 'equal? nil $next3)))
+          (progn
+            (call-method ,method2)
+            (call-method ,method1 (,method3)))))
 
-			 (next-method-p () nil))
+     (inline-call
+      #'my-equal
+      (list method1 method2 method3)
+      '((f x) (* z 4))
+      '(fixnum integer)
+      nil))))
 
-		    (declare (ignorable #'call-next-method #'next-method-p))
+;;;; Test SETF methods
 
-		    (block equal?
-		      (destructuring-bind (x y &optional c) $next2
-			(declare (ignorable x y))
-			(eq x y))))))
-
-	      (next-method-p () t))
-
-	 (declare (ignorable #'call-next-method #'next-method-p))
-
-	 (block equal?
-	   (let* ((a $a1) (b $a2) (c (* a b)))
-	     (declare (ignorable a b))
-	     (declare (type fixnum a) (type integer b))
-
-	     (= a b))))))
-
-   (inline-methods (list method-inlining-method3
-			 method-inlining-method1
-			 method-inlining-method2)
-
-		   '((f x) (* z 4)) nil '(fixnum integer))))
-
-;; ;; Test SETF methods
-
-(test (method-inline-setf-method :fixture inlining-equal?)
+(test (method-inline-setf-method :fixture inlining-my-equal)
   "Test inlining of SETF method"
 
-  (let ((*current-gf* '(setf field)))
+  (let ((method (find-method% #'my-equal nil '(t t)))
+        (*generic-function-table* (copy-hash-table *generic-function-table*))
+        (*current-gf* '(setf field)))
+
+    (setf (gf-method '(setf field) '(nil (t t)))
+          (info-for-method 'my-equal method))
+
     (is-form
-     '(let (($a1 a)
-	    ($a2 b))
-       (declare (type t $a1)
-	(type t $a2))
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list a b 3))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition '(setf field)) ,method $next)))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 $a2))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method '(setf field) nil $next)))
+	     (next-method-p () nil))
+        (declare (ignorable #'call-next-method #'next-method-p))
 
-	      (next-method-p () nil))
+        (block field
+          (let* ((x a) (y b) (c 3))
+	    (declare (ignorable x y))
+            (declare (type t x)
+                     (type t y))
+            (declare (ignore c))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+	    (eq x y))))
 
-	 (block field
-	   (let* ((x $a1) (y $a2) (c nil))
-	     (declare (ignorable x y))
-	     (declare (type t x) (type t y))
-	     (eq x y)))))
-
-     (inline-methods (list method-inlining-method2) '(a b) nil '(t t)))))
+     (inline-method-form '(setf field) method '(a b 3) nil :types '(t t)))))
 
 ;;;; Test Optional Arguments
 
 (test method-inline-with-optional-arguments
   "Test inlining a method with optional arguments"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a &optional b c d))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((a string) &optional b (c nil c-sp) (d 1 d-sp))
+                     (pprint a)
+                     (pprint b)
+                     (list a b c d c-sp d-sp)))))
+
     (is-form
-     '(let (($a1 (get-s1 s1))
-	    ($a2 (get-s2 s2))
-	    ($a3 (get-s3 s3)))
-       (declare (type string $a1))
+     `(let (($a1 (get-s1 s1))
+            ($a2 (get-s2 s2))
+            ($a3 (get-s3 s3)))
+        (declare (type string $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 $a2 $a3))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (let* ((a $a1)
-		  (b $a2)
-		  (c $a3)
-		  (c-sp t)
-		  (d 1)
-		  (d-sp nil))
-	     (declare (ignorable a))
-	     (declare (type string a))
-	     (pprint a)
-	     (pprint b)
-	     (list a b c d)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((pprint a) (pprint b) (list a b c d))
-			   :lambda-list '(a &optional b (c nil c-sp) (d 1 d-sp))
-			   :qualifier nil
-			   :specializers '(string)))
+     (inline-call
+      gf
+      (list method)
       '((get-s1 s1) (get-s2 s2) (get-s3 s3))
-      nil
-      '(string)))))
+      '(string)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+              (let (($next (or $args (list g1 g2 g3))))
+        	(declare (ignorable $next))
+        	(apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+             (next-method-p () nil))
+
+       (declare (ignorable #'call-next-method #'next-method-p))
+
+       (block ,*current-gf*
+         (let* ((a g1)
+        	(b g2)
+        	(c g3)
+        	(c-sp t)
+        	(d 1)
+        	(d-sp nil))
+           (declare (ignorable a))
+           (declare (type string a))
+           (pprint a)
+           (pprint b)
+           (list a b c d c-sp d-sp))))
+
+     (inline-method-form *current-gf* method '(g1 g2 g3) nil :types '(string)))))
 
 ;;;; Test Rest Arguments
 
 (test method-inline-with-rest-argument-empty
   "Test inlining a method with empty rest argument"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a &optional b &rest xs))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((a number) &optional b &rest xs)
+                     (pprint a)
+                     (pprint b)
+                     (list* a b xs)))))
+
     (is-form
-     '(let (($a1 (something x))
-	    ($a2 y))
-       (declare (type integer $a1))
+     `(let (($a1 (something x))
+            ($a2 y))
+        (declare (type integer $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 $a2))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (let* ((a $a1)
-		  (b $a2)
-		  (xs (list)))
-	     (declare (ignorable a))
-	     (declare (type integer a))
-	     (pprint a)
-	     (pprint b)
-	     (list* a b xs)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((pprint a) (pprint b) (list* a b xs))
-			   :lambda-list '(a &optional b &rest xs)
-			   :qualifier nil
-			   :specializers '(number)))
+     (inline-call
+      gf
+      (list method)
       '((something x) y)
-      nil
-      '(integer)))))
+      '(integer)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+               (let (($next (or $args (list a1 a2))))
+        	 (declare (ignorable $next))
+        	 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+             (next-method-p () nil))
+
+        (declare (ignorable #'call-next-method #'next-method-p))
+
+        (block ,*current-gf*
+          (let* ((a a1)
+        	 (b a2)
+        	 (xs (list)))
+            (declare (ignorable a))
+            (declare (type integer a))
+            (pprint a)
+            (pprint b)
+            (list* a b xs))))
+
+     (inline-method-form *current-gf* method '(a1 a2) nil :types '(integer)))))
 
 (test method-inline-with-rest-argument
   "Test inlining a method with non-empty rest argument"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a &optional b &rest xs))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((a character) &optional b &rest xs)
+                     (pprint a)
+                     (pprint b)
+                     (list* a b xs)))))
+
     (is-form
-     '(let (($a1 (something a))
-	    ($a2 b)
-	    ($a3 c)
-	    ($a4 d))
-       (declare (type character $a1))
+     `(let (($a1 (something a))
+            ($a2 b)
+            ($a3 c)
+            ($a4 d))
+        (declare (type character $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 $a2 $a3 $a4 1 2 3))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (let* ((a $a1)
-		  (b $a2)
-		  (xs (list $a3 $a4 1 2 3)))
-	     (declare (ignorable a))
-	     (declare (type character a))
-	     (pprint a)
-	     (pprint b)
-	     (list* a b xs)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((pprint a) (pprint b) (list* a b xs))
-			   :lambda-list '(a &optional b &rest xs)
-			   :qualifier nil
-			   :specializers '(character)))
+     (inline-call
+      gf
+      (list method)
       '((something a) b c d 1 2 3)
-      nil
-      '(character)))))
+      '(character)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list a1 a2 a3 a4 1 2 3))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+	     (next-method-p () nil))
+
+        (declare (ignorable #'call-next-method #'next-method-p))
+
+        (block ,*current-gf*
+	  (let* ((a a1)
+		 (b a2)
+		 (xs (list a3 a4 1 2 3)))
+	    (declare (ignorable a))
+	    (declare (type character a))
+	    (pprint a)
+	    (pprint b)
+	    (list* a b xs))))
+
+     (inline-method-form *current-gf* method '(a1 a2 a3 a4 1 2 3) nil :types '(character)))))
 
 ;;;; Test Keyword Arguments
 
 (test method-inline-with-key-arguments
   "Test inlining a method with keyword"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (v1 &key &allow-other-keys))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((v1 number) &key v2 (v3 1) ((:key123 v4) (+ v1 v2)) (v5 0 v5-sp))
+                     (declare (ignore v5-sp))
+                     (list v1 v2 v3 v4 v5)))))
+
     (is-form
-     '(let (($a1 a)
-	    ($a2 b)
-	    ($a3 c)
-	    ($a4 (* a b)))
-       (declare (type number $a1))
+     `(let (($a1 a)
+            ($a2 b)
+            ($a3 c)
+            ($a4 (* a b)))
+        (declare (type number $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 :v2 $a2 :key123 $a3 :v3 $a4))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (let* ((v1 $a1) (v2 $a2) (v3 $a4) (v4 $a3)
-		  (v5 0) (v5-sp nil))
-	     (declare (ignorable v1))
-	     (declare (type number v1))
-	     (list v1 v2 v3 v4 v5)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((list v1 v2 v3 v4 v5))
-			   :lambda-list '(v1 &key v2 (v3 1) ((:key123 v4) (+ v1 v2)) (v5 0 v5-sp))
-			   :qualifier nil
-			   :specializers '(number)))
+     (inline-call
+      gf
+      (list method)
       '(a :v2 b :key123 c :v3 (* a b))
-      nil
-      '(number)))))
+      '(number)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+	     (next-method-p () nil))
+
+        (declare (ignorable #'call-next-method #'next-method-p))
+
+        (block ,*current-gf*
+	  (let* ((v1 a1) (v2 a2) (v3 a4) (v4 a3)
+		 (v5 0) (v5-sp nil))
+	    (declare (ignorable v1))
+	    (declare (type number v1))
+            (declare (ignore v5-sp))
+	    (list v1 v2 v3 v4 v5))))
+
+     (inline-method-form
+      *current-gf* method '(a1 :v2 a2 :key123 a3 :v3 a4) nil
+      :types '(number)))))
 
 (test method-inline-with-key-and-rest-arguments
   "Test inlining a method with keyword and rest arguments"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a &rest b &key &allow-other-keys))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+                     (declare (ignore v4-sp all))
+                     (list v1 v2 v3 v4 v5)))))
+
     (is-form
-     '(let (($a1 a)
-	    ($a2 b)
-	    ($a3 c)
-	    ($a4 (* a b))
-	    ($a5 (+ x y z)))
-       (declare (type number $a1))
+     `(let (($a1 a)
+            ($a2 b)
+            ($a3 c)
+            ($a4 (* a b))
+            ($a5 (+ x y z)))
+        (declare (type number $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 :v2 $a2 :key123 $a3 :v3 $a4 :other $a5))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (let* ((v1 $a1)
-		  (all (list :v2 $a2 :key123 $a3 :v3 $a4 :other $a5))
-		  (v2 $a2)
-		  (v3 $a4)
-		  (v4 $a3)
-		  (v4-sp t)
-		  (v5 0))
-	     (declare (ignorable v1))
-	     (declare (type number v1))
-	     (list v1 v2 v3 v4 v5)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((list v1 v2 v3 v4 v5))
-			   :lambda-list '(v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
-			   :qualifier nil
-			   :specializers '(number)))
+     (inline-call
+      gf
+      (list method)
       '(a :v2 b :key123 c :v3 (* a b) :other (+ x y z))
+      '(number)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+	     (next-method-p () nil))
+
+        (declare (ignorable #'call-next-method #'next-method-p))
+
+        (block ,*current-gf*
+	  (let* ((v1 a1)
+		 (all (list :v2 a2 :key123 a3 :v3 a4 :other a5))
+		 (v2 a2)
+		 (v3 a4)
+		 (v4 a3)
+		 (v4-sp t)
+		 (v5 0))
+	    (declare (ignorable v1))
+	    (declare (type number v1))
+            (declare (ignore v4-sp all))
+	    (list v1 v2 v3 v4 v5))))
+
+     (inline-method-form
+      *current-gf* method
+      '(a1 :v2 a2 :key123 a3 :v3 a4 :other a5)
       nil
-      '(number)))))
+      :types '(number)))))
 
 (test method-inline-with-key-and-rest-arguments-fail-1
   "Test inlining a method with failed keyword argument destructuring"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a &rest b &key v2 v3 key123 v5))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+                     (declare (ignore v4-sp all))
+                     (list v1 v2 v3 v4 v5)))))
+
     (is-form
-     '(let (($a1 a)
-	    ($a2 b)
-	    ($a3 c)
-	    ($a4 (* a b))
-	    ($a5 (+ x y z)))
-       (declare (type number $a1))
+     `(let (($a1 a)
+            ($a2 b)
+            ($a3 c)
+            ($a4 (* a b))
+            ($a5 (+ x y z)))
+        (declare (type number $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 :v2 $a2 :key123 $a3 :v3 $a4 :other $a5))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
-	       (list $a1 :v2 $a2 :key123 $a3 :v3 $a4 :other $a5)
-
-	     (declare (ignorable v1))
-	     (declare (type number v1))
-	     (list v1 v2 v3 v4 v5)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((list v1 v2 v3 v4 v5))
-			   :lambda-list '(v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
-			   :qualifier nil
-			   :specializers '(number)))
+     (inline-call
+      gf
+      (list method)
       '(a :v2 b :key123 c :v3 (* a b) :other (+ x y z))
+      '(number)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	      (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5))))
+		(declare (ignorable $next))
+		(apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+	     (next-method-p () nil))
+
+       (declare (ignorable #'call-next-method #'next-method-p))
+
+       (block ,*current-gf*
+	 (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+	     (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5)
+
+	   (declare (ignorable v1))
+	   (declare (type number v1))
+           (declare (ignore v4-sp all))
+	   (list v1 v2 v3 v4 v5))))
+
+     (inline-method-form
+      *current-gf* method
+      '(a1 :v2 a2 :key123 a3 :v3 a4 :other a5)
       nil
-      '(number)))))
+      :types '(number)))))
 
 (test method-inline-with-key-and-rest-arguments-fail-2
   "Test inlining a method with failed keyword argument destructuring"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a &rest b &key &allow-other-keys))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+                     (declare (ignore v4-sp all))
+                     (list v1 v2 v3 v4 v5)))))
+
     (is-form
-     '(let (($a1 a)
-	    ($key1 key1)
-	    ($a2 b)
-	    ($key2 key2)
-	    ($a3 c)
-	    ($key3 key3)
-	    ($a4 (* a b)))
-       (declare (type number $a1))
+     `(let (($a1 a)
+            ($a2 key1)
+            ($a3 b)
+            ($a4 key2)
+            ($a5 c)
+            ($a6 key3)
+            ($a7 (* a b)))
+        (declare (type number $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 $key1 $a2 $key2 $a3 $key3 $a4))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
-	       (list $a1 $key1 $a2 $key2 $a3 $key3 $a4)
-
-	     (declare (ignorable v1))
-	     (declare (type number v1))
-	     (list v1 v2 v3 v4 v5)))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '((list v1 v2 v3 v4 v5))
-			   :lambda-list '(v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
-			   :qualifier nil
-			   :specializers '(number)))
+     (inline-call
+      gf
+      (list method)
       '(a key1 b key2 c key3 (* a b))
+      '(number)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list a1 a2 a3 a4 a5 a6 a7))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+	     (next-method-p () nil))
+
+        (declare (ignorable #'call-next-method #'next-method-p))
+
+        (block ,*current-gf*
+	  (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+	      (list a1 a2 a3 a4 a5 a6 a7)
+
+	    (declare (ignorable v1))
+	    (declare (type number v1))
+            (declare (ignore v4-sp all))
+	    (list v1 v2 v3 v4 v5))))
+
+     (inline-method-form
+      *current-gf* method
+      '(a1 a2 a3 a4 a5 a6 a7)
       nil
-      '(number)))))
+      :types '(number)))))
 
 (test method-inline-with-aux-arguments
   "Test inlining a method with auxiliary arguments"
 
-  (let ((*current-gf* 'inline-test))
+  (let* ((*current-gf* (gensym "INLINE-TEST"))
+         (gf (eval `(defgeneric ,*current-gf* (a b))))
+         (method (eval
+                  `(defmethod ,*current-gf* ((x number) y &aux (sum (+ x y)))
+                     sum))))
+
     (is-form
-     '(let (($a1 (get-arg a)))
-       (declare (type integer $a1))
+     `(let (($a1 (get-arg a)))
+        (declare (type integer $a1))
 
-       (flet ((call-next-method (&rest $args)
-		(let (($next (or $args (list $a1 1))))
-		  (declare (ignorable $next))
-		  (apply #'no-next-method 'inline-test nil $next)))
+        (static-dispatch-test-hook)
 
-	      (next-method-p () nil))
+        (macrolet ((call-method ($m1 &optional $mnext &environment $env) . $call-method-def)
+                   (make-method ($method) . $make-method-def))
 
-	 (declare (ignorable #'call-next-method #'next-method-p))
+          (call-method ,method nil)))
 
-	 (block inline-test
-	   (let* ((x $a1) (y 1) (sum (+ x y)))
-	     (declare (ignorable x))
-	     (declare (type integer x))
-	     sum))))
-
-     (inline-methods
-      (list (make-instance 'method-info
-			   :body '(sum)
-			   :lambda-list '(x y &aux (sum (+ x y)))
-			   :qualifier nil
-			   :specializers '(number)))
+     (inline-call
+      gf
+      (list method)
       '((get-arg a) 1)
-      nil
-      '(integer)))))
+      '(integer)
+      nil))
+
+    (is-form
+     `(flet ((call-next-method (&rest $args)
+	       (let (($next (or $args (list a1 1))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+
+	     (next-method-p () nil))
+
+	(declare (ignorable #'call-next-method #'next-method-p))
+
+	(block ,*current-gf*
+	  (let* ((x a1) (y 1) (sum (+ x y)))
+	    (declare (ignorable x y))
+	    (declare (type integer x))
+	    sum)))
+
+     (inline-method-form *current-gf* method '(a1 1) nil :types '(integer)))))
