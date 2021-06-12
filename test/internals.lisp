@@ -567,20 +567,21 @@
      (is (form= ,expected ,got) ,@args)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defgeneric my-equal (x y &optional z))
+  (cl-environments.cltl2::disable-walker
+    (defgeneric my-equal (x y &optional z))
 
-  (defmethod my-equal ((a number) (b number) &optional (c (* a b)))
-    (declare (ignore c))
-    (= a b))
+    (defmethod my-equal ((a number) (b number) &optional (c (* a b)))
+      (declare (ignore c))
+      (= a b))
 
-  (defmethod my-equal (x y &optional c)
-    (declare (ignore c))
-    (eq x y))
+    (defmethod my-equal (x y &optional c)
+      (declare (ignore c))
+      (eq x y))
 
-  (defmethod my-equal :before ((n1 number) n2 &optional (z 'x z-sp))
-    (declare (ignore z))
-    (pprint n1)
-    (pprint n2)))
+    (defmethod my-equal :before ((n1 number) n2 &optional (z 'x z-sp))
+               (declare (ignore z))
+               (pprint n1)
+               (pprint n2))))
 
 (def-fixture inlining-my-equal ()
   (let ((*check-types*)
@@ -757,7 +758,7 @@
   (let* ((*current-gf* `(setf ,(gensym "FIELD")))
          (method
           (eval
-           `(progn
+           `(cl-environments.cltl2::disable-walker
               (defgeneric ,*current-gf* (value x &optional y))
 
               (defmethod ,*current-gf* (x y &optional c)
@@ -790,12 +791,14 @@
   "Test inlining a method with optional arguments"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a &optional b c d))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (a &optional b c d)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((a string) &optional b (c nil c-sp) (d 1 d-sp))
-                     (pprint a)
-                     (pprint b)
-                     (list a b c d c-sp d-sp)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((a string) &optional b (c nil c-sp) (d 1 d-sp))
+                      (pprint a)
+                      (pprint b)
+                      (list a b c d c-sp d-sp))))))
 
     (is-form
      `(let (($a1 (get-s1 s1))
@@ -848,12 +851,14 @@
   "Test inlining a method with empty rest argument"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a &optional b &rest xs))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (a &optional b &rest xs)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((a number) &optional b &rest xs)
-                     (pprint a)
-                     (pprint b)
-                     (list* a b xs)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((a number) &optional b &rest xs)
+                      (pprint a)
+                      (pprint b)
+                      (list* a b xs))))))
 
     (is-form
      `(let (($a1 (something x))
@@ -900,12 +905,14 @@
   "Test inlining a method with non-empty rest argument"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a &optional b &rest xs))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (a &optional b &rest xs)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((a character) &optional b &rest xs)
-                     (pprint a)
-                     (pprint b)
-                     (list* a b xs)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((a character) &optional b &rest xs)
+                      (pprint a)
+                      (pprint b)
+                      (list* a b xs))))))
 
     (is-form
      `(let (($a1 (something a))
@@ -956,11 +963,13 @@
   "Test inlining a method with keyword"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (v1 &key &allow-other-keys))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (v1 &key &allow-other-keys)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((v1 number) &key v2 (v3 1) ((:key123 v4) (+ v1 v2)) (v5 0 v5-sp))
-                     (declare (ignore v5-sp))
-                     (list v1 v2 v3 v4 v5)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((v1 number) &key v2 (v3 1) ((:key123 v4) (+ v1 v2)) (v5 0 v5-sp))
+                      (declare (ignore v5-sp))
+                      (list v1 v2 v3 v4 v5))))))
 
     (is-form
      `(let (($a1 a)
@@ -1009,11 +1018,13 @@
   "Test inlining a method with keyword and rest arguments"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a &rest b &key &allow-other-keys))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (a &rest b &key &allow-other-keys)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
-                     (declare (ignore v4-sp all))
-                     (list v1 v2 v3 v4 v5)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+                      (declare (ignore v4-sp all))
+                      (list v1 v2 v3 v4 v5))))))
 
     (is-form
      `(let (($a1 a)
@@ -1070,11 +1081,13 @@
   "Test inlining a method with failed keyword argument destructuring"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a &rest b &key v2 v3 key123 v5))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (a &rest b &key v2 v3 key123 v5)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
-                     (declare (ignore v4-sp all))
-                     (list v1 v2 v3 v4 v5)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+                      (declare (ignore v4-sp all))
+                      (list v1 v2 v3 v4 v5))))))
 
     (is-form
      `(let (($a1 a)
@@ -1100,22 +1113,22 @@
 
     (is-form
      `(flet ((call-next-method (&rest $args)
-	      (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5))))
-		(declare (ignorable $next))
-		(apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+	       (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5))))
+		 (declare (ignorable $next))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
 
 	     (next-method-p () nil))
 
-       (declare (ignorable #'call-next-method #'next-method-p))
+        (declare (ignorable #'call-next-method #'next-method-p))
 
-       (block ,*current-gf*
-	 (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
-	     (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5)
+        (block ,*current-gf*
+	  (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
+	      (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5)
 
-	   (declare (ignorable v1))
-	   (declare (type number v1))
-           (declare (ignore v4-sp all))
-	   (list v1 v2 v3 v4 v5))))
+	    (declare (ignorable v1))
+	    (declare (type number v1))
+            (declare (ignore v4-sp all))
+	    (list v1 v2 v3 v4 v5))))
 
      (inline-method-form
       *current-gf* method
@@ -1127,11 +1140,13 @@
   "Test inlining a method with failed keyword argument destructuring"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a &rest b &key &allow-other-keys))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                      (defgeneric ,*current-gf* (a &rest b &key &allow-other-keys)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
-                     (declare (ignore v4-sp all))
-                     (list v1 v2 v3 v4 v5)))))
+                  `(cl-environments.cltl2::disable-walker
+                     (defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+                      (declare (ignore v4-sp all))
+                      (list v1 v2 v3 v4 v5))))))
 
     (is-form
      `(let (($a1 a)
@@ -1186,10 +1201,12 @@
   "Test inlining a method with auxiliary arguments"
 
   (let* ((*current-gf* (gensym "INLINE-TEST"))
-         (gf (eval `(defgeneric ,*current-gf* (a b))))
+         (gf (eval `(cl-environments.cltl2::disable-walker
+                     (defgeneric ,*current-gf* (a b)))))
          (method (eval
-                  `(defmethod ,*current-gf* ((x number) y &aux (sum (+ x y)))
-                     sum))))
+                  `(cl-environments.cltl2::disable-walker
+                    (defmethod ,*current-gf* ((x number) y &aux (sum (+ x y)))
+                      sum)))))
 
     (is-form
      `(let (($a1 (get-arg a)))
