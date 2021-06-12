@@ -193,30 +193,3 @@
 	     lambda-list
 	     (make-required required)
 	     sp-vars)))))))
-
-(defun unparse-lambda-list (required optional rest key allow-other-keys aux keyp)
-  "Construct a lambda-list out of its components.
-
-   REQUIRED is the list of required arguments.
-
-   OPTIONAL is the list of optional argument specifiers.
-
-   REST is the rest argument, or NIL if there is no rest argument.
-
-   ALLOW-OTHER-KEYS is a flag for whether &ALLOW-OTHER-KEYS should be
-   present.
-
-   AUX is the list of auxiliary variable specifiers.
-
-   KEYP is a flag for whether &key should be present.
-
-   Returns the lambda list."
-
-  (append
-   required
-   (when optional (list* '&optional optional))
-   (when rest (list '&rest rest))
-   (when keyp '(&key))
-   key
-   (when allow-other-keys '(&allow-other-keys))
-   (when aux (list* '&aux aux))))

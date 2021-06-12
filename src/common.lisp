@@ -692,28 +692,36 @@
    ARGS with types TYPES."
 
   (with-slots (lambda-list specializers body) method
-    `(block ,(block-name *current-gf*)
-       ,(destructure-args
-	 args
-	 lambda-list
+    (let ((lambda-list
+           (if (->> (fdefinition *current-gf*)
+                    generic-function-lambda-list
+                    (member '&allow-other-keys))
 
-	 (multiple-value-bind (forms declarations)
-	     (parse-body body :documentation t)
+               (add-allow-other-keys lambda-list)
+               lambda-list)))
 
-	   `(,@(when args
-		 (-> (subseq lambda-list 0 (length specializers))
-		     (make-ignorable-declarations)
-		     list))
+      `(block ,(block-name *current-gf*)
+         ,(destructure-args
+	   args
+	   lambda-list
 
-	       ,@(when types
-		   (list (make-type-declarations lambda-list types)))
+	   (multiple-value-bind (forms declarations)
+	       (parse-body body :documentation t)
 
-	       ,@declarations
+	     `(,@(when args
+		   (-> (subseq lambda-list 0 (length specializers))
+		       (make-ignorable-declarations)
+		       list))
 
-	       ,@(when (and (null types) check-types)
-		   (make-type-checks lambda-list specializers))
+	         ,@(when types
+		     (list (make-type-declarations lambda-list types)))
 
-	       ,@forms))))))
+	         ,@declarations
+
+	         ,@(when (and (null types) check-types)
+		     (make-type-checks lambda-list specializers))
+
+	         ,@forms)))))))
 
 (defun make-method-function-call (function args &optional extra)
   "Generate call to the function which implements a method.
@@ -737,6 +745,60 @@
 
     (symbol
      `(apply #',function ,@extra ,args))))
+
+(defun add-allow-other-keys (lambda-list)
+  "Add &ALLOW-OTHER-KEYS to a LAMBDA-LIST."
+
+  (multiple-value-bind (required optional rest key allow-other-keys aux keyp)
+      (parse-ordinary-lambda-list lambda-list)
+
+    (declare (ignore allow-other-keys))
+
+    (unparse-lambda-list required optional rest key t aux keyp)))
+
+(defun unparse-lambda-list (required optional rest key allow-other-keys aux keyp)
+  "Construct a lambda-list out of its components.
+
+   REQUIRED is the list of required arguments.
+
+   OPTIONAL is the list of optional argument specifiers.
+
+   REST is the rest argument, or NIL if there is no rest argument.
+
+   ALLOW-OTHER-KEYS is a flag for whether &ALLOW-OTHER-KEYS should be
+   present.
+
+   AUX is the list of auxiliary variable specifiers.
+
+   KEYP is a flag for whether &key should be present.
+
+   Returns the lambda list."
+
+  (flet ((remove-nil-sp-var (arg)
+           (match arg
+             ((list arg init nil)
+              (list arg init))
+
+             (_ arg))))
+
+    (append
+     required
+     (when optional
+       (list* '&optional
+              (mapcar #'remove-nil-sp-var optional)))
+     (when rest
+       (list '&rest rest))
+
+     (when keyp
+       '(&key))
+
+     (mapcar #'remove-nil-sp-var key)
+
+     (when allow-other-keys
+       '(&allow-other-keys))
+
+     (when aux
+       (list* '&aux aux)))))
 
 (defun destructure-args (args lambda-list body)
   "Destructure the argument list, based on the lambda-list, if possible.
