@@ -117,7 +117,7 @@
 	    (lambda-list->arg-list-form lambda-list)
 
 	  `(defun ,name (,call-next-method ,next-method-p ,@lambda-list)
-	     (declare (ignorable ,@ignore))
+	     (declare (ignorable ,call-next-method ,next-method-p ,@ignore))
 	     (static-method-function-test-hook)
 
 	     (flet ((call-next-method (&rest ,next-arg-var)

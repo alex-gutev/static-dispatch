@@ -157,7 +157,8 @@
 	 (intern-eql-specializer value))
 
 	(_
-	 (find-class specializer nil)))))
+	 (find-class specializer nil))))
+    specializers)
    nil)
 
   #-clisp (find-method gf qualifiers specializers nil))
@@ -714,7 +715,9 @@
 		       list))
 
 	         ,@(when types
-		     (list (make-type-declarations lambda-list types)))
+		     (list (make-type-declarations
+                            (subseq lambda-list 0 (length specializers))
+                            types)))
 
 	         ,@declarations
 

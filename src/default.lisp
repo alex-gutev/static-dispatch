@@ -85,7 +85,7 @@
 
   (let* ((*env* env)
 	 (gf (fdefinition gf-name))
-         (types (mapcar #'nth-form-type env) args)
+         (types (mapcar (rcurry #'nth-form-type env) args))
          (methods (compute-applicable-methods% gf-name types)))
 
     (when methods
