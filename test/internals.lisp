@@ -751,35 +751,38 @@
 
 ;;;; Test SETF methods
 
-(test (method-inline-setf-method :fixture inlining-my-equal)
+(test method-inline-setf-method
   "Test inlining of SETF method"
 
-  (let ((method (find-method% #'my-equal nil '(t t)))
-        (*generic-function-table* (copy-hash-table *generic-function-table*))
-        (*current-gf* '(setf field)))
+  (let* ((*current-gf* `(setf ,(gensym "FIELD")))
+         (method
+          (eval
+           `(progn
+              (defgeneric ,*current-gf* (value x &optional y))
 
-    (setf (gf-method '(setf field) '(nil (t t)))
-          (info-for-method 'my-equal method))
+              (defmethod ,*current-gf* (x y &optional c)
+                (declare (ignore c))
+                (setf (car y) x))))))
 
     (is-form
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a b 3))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition '(setf field)) ,method $next)))
+		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
 
 	     (next-method-p () nil))
         (declare (ignorable #'call-next-method #'next-method-p))
 
-        (block field
+        (block ,(second *current-gf*)
           (let* ((x a) (y b) (c 3))
 	    (declare (ignorable x y))
             (declare (type t x)
                      (type t y))
             (declare (ignore c))
 
-	    (eq x y))))
+	    (setf (car y) x))))
 
-     (inline-method-form '(setf field) method '(a b 3) nil :types '(t t)))))
+     (inline-method-form *current-gf* method '(a b 3) nil :types '(t t)))))
 
 ;;;; Test Optional Arguments
 
@@ -1008,7 +1011,7 @@
   (let* ((*current-gf* (gensym "INLINE-TEST"))
          (gf (eval `(defgeneric ,*current-gf* (a &rest b &key &allow-other-keys))))
          (method (eval
-                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+                  `(defmethod ,*current-gf* ((v1 number) &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0))
                      (declare (ignore v4-sp all))
                      (list v1 v2 v3 v4 v5)))))
 
@@ -1165,7 +1168,7 @@
         (declare (ignorable #'call-next-method #'next-method-p))
 
         (block ,*current-gf*
-	  (destructuring-bind (v1 &rest all &key v2 (v3 1) ((:key123 v4) (+ v1 v2) v4-sp) (v5 0) &allow-other-keys)
+	  (destructuring-bind (v1 &rest all &key ((:v2 v2) nil) ((:v3 v3) 1) ((:key123 v4) (+ v1 v2) v4-sp) ((:v5 v5) 0) &allow-other-keys)
 	      (list a1 a2 a3 a4 a5 a6 a7)
 
 	    (declare (ignorable v1))
