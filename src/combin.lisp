@@ -202,7 +202,7 @@
    of the generic function and COMBINATION is the name of the method
    combination.")
 
-(defmacro call-method (method methods)
+(defmacro call-method (method &optional methods)
   `(cl:call-method ,method ,methods))
 
 (defmacro make-method (form)
