@@ -549,17 +549,24 @@
                  (bind-aux (body)
                    (if cm-aux
                        `(let ,cm-aux ,body)
-                       body)))
+                       body))
+
+                 (optional-vars (optional)
+                   (destructuring-bind (var init sp) optional
+                     (declare (ignore init))
+
+                     (cons var (ensure-list sp)))))
 
           (destructure-args
            args
            (unparse-lambda-list
             gf-required gf-optional rest nil nil nil nil)
 
-           (-> body
-               bind-required
-               bind-optional
-               bind-rest
-               bind-key
-               bind-aux
-               list)))))))
+           (->> body
+                bind-required
+                bind-optional
+                bind-rest
+                bind-key
+                bind-aux
+                (list
+                 `(declare (ignorable ,rest ,@gf-required ,@(mappend #'optional-vars gf-optional)))))))))))
