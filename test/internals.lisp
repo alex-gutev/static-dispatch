@@ -579,7 +579,7 @@
       (eq x y))
 
     (defmethod my-equal :before ((n1 number) n2 &optional (z 'x z-sp))
-               (declare (ignore z))
+               (declare (ignore z z-sp))
                (pprint n1)
                (pprint n2))))
 
