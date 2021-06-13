@@ -396,7 +396,7 @@
                          group-specs
                          (if arg-lambda-list
                              (let ((gensyms (gensym-vars arg-lambda-list)))
-                               (make-destructure-args gf lambda-list gensyms body))
+                               (make-destructure-args gf arg-lambda-list gensyms body))
 
                              body))))))))))))))
 
@@ -505,7 +505,8 @@
                      `((destructuring-bind (&optional ,@(mapcar #'gensym-var cm-required))
                            (sub-arg-list ,args 0 ,(length gf-required))
 
-                         ,@body))))
+                         ,@body))
+                     body))
 
                (bind-optional (body)
                  (if cm-optional
