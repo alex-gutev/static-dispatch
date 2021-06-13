@@ -284,7 +284,7 @@
   (with-gensyms (methods options args)
     (labels ((bind-groups (groups body)
                (multiple-value-bind (forms decls)
-                   (parse-body body)
+                   (parse-body body :documentation t)
 
                  (loop
                     for (var . options) in groups
@@ -366,7 +366,7 @@
 
              (make-destructure-args (gf lambda-list gensyms body)
                (multiple-value-bind (forms decl)
-                   (parse-body body)
+                   (parse-body body :documentation t)
 
                  `((destructure-combin-lambda-list
                     ,gf ',lambda-list ',gensyms ,args
