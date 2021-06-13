@@ -55,36 +55,39 @@
 (test (standard-list-combination :compile-at :run-time)
   "Test another method combination provided by the CL standard"
 
-  (declare (optimize (speed 3) (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally
+      (declare (optimize (speed 3) (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
-  (test-dispatch (foo-list 2) '(:around-integer ((:integer 2) (:number 2) (:default 2))))
-  (test-dispatch (foo-list 3) '(:special 3))
-  (test-dispatch (foo-list 1/2) '((:number 1/2) (:default 1/2)))
-  (test-dispatch (foo-list "hello") '((:string "hello") (:default "hello")))
-  (test-dispatch (foo-list 'x) '((:default x))))
+    (test-dispatch (foo-list 2) '(:around-integer ((:integer 2) (:number 2) (:default 2))))
+    (test-dispatch (foo-list 3) '(:special 3))
+    (test-dispatch (foo-list 1/2) '((:number 1/2) (:default 1/2)))
+    (test-dispatch (foo-list "hello") '((:string "hello") (:default "hello")))
+    (test-dispatch (foo-list 'x) '((:default x)))))
 
 (test (short-form-combination :compile-at :run-time)
   "Test method-combination defined with short-form definition"
 
-  (declare (optimize (speed 3) (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally
+      (declare (optimize (speed 3) (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
-  (test-dispatch (bar-list 2) '(:around-number ((:integer 2) (:number 2) (:default 2))))
-  (test-dispatch (bar-list 3) '(:special 3))
-  (test-dispatch (bar-list 1/2) '(:around-number ((:number 1/2) (:default 1/2))))
-  (test-dispatch (bar-list "hello") '((:string "hello") (:default "hello")))
-  (test-dispatch (bar-list 'x) '(:default x)))
+    (test-dispatch (bar-list 2) '(:around-number ((:integer 2) (:number 2) (:default 2))))
+    (test-dispatch (bar-list 3) '(:special 3))
+    (test-dispatch (bar-list 1/2) '(:around-number ((:number 1/2) (:default 1/2))))
+    (test-dispatch (bar-list "hello") '((:string "hello") (:default "hello")))
+    (test-dispatch (bar-list 'x) '(:default x))))
 
 (test (long-form-combination :compile-at :run-time)
   "Test method-combination defined with long-form definition"
 
-  (declare (optimize (speed 3) (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally
+      (declare (optimize (speed 3) (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
-  (test-dispatch (baz-subtype 'fixnum 10) '(:integer fixnum 10))
-  (test-dispatch (baz-subtype 'ratio 3/5) '(:number ratio 3/5))
-  (test-dispatch (baz-subtype 'string "abc") '(:array string "abc"))
+    (test-dispatch (baz-subtype 'fixnum 10) '(:integer fixnum 10))
+    (test-dispatch (baz-subtype 'ratio 3/5) '(:number ratio 3/5))
+    (test-dispatch (baz-subtype 'string "abc") '(:array string "abc"))
 
-  (test-dispatch
-   (handler-case (baz-subtype 'symbol 'symb)
-     (no-method-for-type () 'cant-process-symbol))
+    (test-dispatch
+     (handler-case (baz-subtype 'symbol 'symb)
+       (no-method-for-type () 'cant-process-symbol))
 
-   'cant-process-symbol))
+     'cant-process-symbol)))
