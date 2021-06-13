@@ -506,7 +506,7 @@
                  (bind-required (body)
                    (loop
                       for (arg . args) on cm-required
-                      for (gf-arg . gf-args) on gf-required
+                      for gf-arg in gf-required
                       collect (list (gensym-var arg) gf-arg) into bindings
                       finally
                         (return
@@ -516,7 +516,7 @@
                  (bind-optional (body)
                    (loop
                       for (arg . args) on cm-optional
-                      for (gf-arg . gf-args) on gf-optional
+                      for gf-arg in gf-optional
                       for (var nil sp) = (gensym-optional arg)
                       collect `(,var ,gf-arg) into bindings
                       if sp collect `(,sp t) into bindings

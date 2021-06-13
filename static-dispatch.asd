@@ -74,7 +74,9 @@
 		 (:file "aux")
 		 (:file "compiler-macro")
 		 (:file "method-functions-defs")
-		 (:file "method-functions"))))
+		 (:file "method-functions")
+                 (:file "combination-defs")
+                 (:file "combination"))))
 
   :perform (asdf:test-op (op c)
 			 (uiop:symbol-call :static-dispatch/test :test-static-dispatch)))
