@@ -76,6 +76,9 @@
     (test-dispatch (bar-list "hello") '((:string "hello") (:default "hello")))
     (test-dispatch (bar-list 'x) '(:default x))))
 
+;; ECL doesn't support the arguments option in define-method-combination.
+
+#-ecl
 (test (long-form-combination :compile-at :run-time)
   "Test method-combination defined with long-form definition"
 

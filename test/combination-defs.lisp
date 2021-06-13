@@ -50,6 +50,9 @@
    (lambda (e s)
      (format s "No method for type: ~s." (the-type e)))))
 
+;; ECL doesn't support the :ARGUMENTS keyword in define-method-combination.
+
+#-ecl
 (define-method-combination subtype ()
   ((methods * :required t))
   (:arguments type)
@@ -138,14 +141,16 @@
 
 ;;; Generic function with a user-defined long-form method combination
 
-(defgeneric baz-subtype (type thing)
-  (:method-combination subtype))
+#-ecl
+(progn
+ (defgeneric baz-subtype (type thing)
+   (:method-combination subtype))
 
-(defmethod baz-subtype number (type thing)
-  (list :number type thing))
+ (defmethod baz-subtype number (type thing)
+            (list :number type thing))
 
-(defmethod baz-subtype array (type thing)
-  (list :array type thing))
+ (defmethod baz-subtype array (type thing)
+            (list :array type thing))
 
-(defmethod baz-subtype integer (type thing)
-  (list :integer type thing))
+ (defmethod baz-subtype integer (type thing)
+            (list :integer type thing)))
