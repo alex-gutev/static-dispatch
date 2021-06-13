@@ -262,13 +262,13 @@
     `(method-combination-function ,name
          (&optional (,order :most-specific-first))
          ((,around (:around))
-          (,primary (,operator) :order ,order :required t))
+          (,primary (,name) :order ,order :required t))
 
-       (let ((,form (if (and ,optimize (rest ,primary))
+       (let ((,form (if (or (null ,optimize) (rest ,primary))
                         `(,',operator ,@(mapcar #'(lambda (,method)
                                                   `(call-method ,,method))
                                               ,primary))
-                        `(cal-method ,(first ,primary)))))
+                        `(call-method ,(first ,primary)))))
 
          (if ,around
              `(call-method ,(first ,around)
