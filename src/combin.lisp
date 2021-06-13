@@ -231,8 +231,8 @@
 
 (defmacro define-method-combination (name &rest args)
   `(progn
-     (define-method-combination ,name ,@args)
-     (define-method-combination% ,name ,@args)))
+     (define-method-combination% ,name ,@args)
+     (c2mop:define-method-combination ,name ,@args)))
 
 (defmacro define-method-combination% (name &rest args)
   "Define a method-combination for the static-dispatch system only.
