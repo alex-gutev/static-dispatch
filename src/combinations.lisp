@@ -71,6 +71,6 @@
 (define-method-combination% nconc :operator nconc :identity-with-one-argument t)
 (define-method-combination% progn :operator progn :identity-with-one-argument t)
 (define-method-combination% and :operator and :identity-with-one-argument t)
-(define-method-combination% list :operator list :identity-with-one-argument t)
+(define-method-combination% list)
 (define-method-combination% min :operator min :identity-with-one-argument t)
 (define-method-combination% or :operator or :identity-with-one-argument t)
