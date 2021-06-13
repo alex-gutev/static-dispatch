@@ -332,9 +332,7 @@
 
   (flet ((check-method (method)
            (or (info-for-method name method)
-               (simple-style-warning
-                "Missing method info for method ~s of ~s. Refusing to static dispatch."
-                name method))))
+               (error "Missing method info for method ~s" method))))
 
     (let* ((gf (fdefinition name))
 	   (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))

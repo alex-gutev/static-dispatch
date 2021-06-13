@@ -88,5 +88,6 @@
          (types (mapcar (rcurry #'nth-form-type env) args))
          (methods (compute-applicable-methods% gf-name types)))
 
-    (when methods
-      (inline-call gf methods args types (should-check-types? env)))))
+    (if methods
+        (inline-call gf methods args types (should-check-types? env))
+        (error "No applicable methods for argument types: ~s" types))))

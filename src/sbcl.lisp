@@ -240,8 +240,9 @@
         (let* ((gf (fdefinition name))
                (methods (compute-applicable-methods% name types)))
 
-          (when methods
-            (inline-call gf methods args types (sb-c:policy node (> safety 0))))))
+          (if methods
+              (inline-call gf methods args types (sb-c:policy node (> safety 0)))
+              (error "No applicable methods for argument types: ~s" types))))
 
     (error (e)
       (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
