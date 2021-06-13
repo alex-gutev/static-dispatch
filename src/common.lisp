@@ -198,7 +198,7 @@
                  ,(make-static-dispatch name lambda-list specializers)))
 
 	  (error (e)
-            (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~s" e)))
+            (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~a" e)))
 
        ,method)))
 
@@ -238,7 +238,7 @@
                           '(,combination ,combination-options))))
 
 	       (error (e)
-                 (simple-style-warning "Error parsing DEFGENERIC form:~%~s" e)))
+                 (simple-style-warning "Error parsing DEFGENERIC form:~%~a" e)))
 
            ,gf)))))
 
