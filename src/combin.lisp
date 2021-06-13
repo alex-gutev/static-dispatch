@@ -486,55 +486,80 @@
   (multiple-value-bind (gf-required gf-optional)
       (parse-ordinary-lambda-list (generic-function-lambda-list gf))
 
-    (multiple-value-bind (cm-required cm-optional cm-rest cm-key)
+    (multiple-value-bind (cm-required cm-optional cm-rest cm-key allow-other-keys cm-aux)
         (parse-ordinary-lambda-list lambda-list)
 
-      (labels ((gensym-var (var)
-                 (cdr (assoc var gensyms)))
+      (declare (ignore allow-other-keys))
 
-               (gensym-optional (opt)
-                 (destructuring-bind (var init sp) opt
-                   `(,(gensym-var var) ,init ,@(when sp (list (gensym-var sp))))))
+      (with-gensyms (rest)
+        (labels ((gensym-var (var)
+                   (cdr (assoc var gensyms)))
 
-               (gensym-key (key)
-                 (destructuring-bind ((key var) init sp) key
-                   `((,key ,(gensym-var var)) ,init ,@(when sp (list (gensym-var sp))))))
+                 (gensym-optional (opt)
+                   (destructuring-bind (var init sp) opt
+                     `(,(gensym-var var) ,init ,@(when sp (list (gensym-var sp))))))
 
-               (bind-required (body)
-                 (if cm-required
-                     `((destructuring-bind (&optional ,@(mapcar #'gensym-var cm-required))
-                           (sub-arg-list ,args 0 ,(length gf-required))
+                 (gensym-key (key)
+                   (destructuring-bind ((key var) init sp) key
+                     `((,key ,(gensym-var var)) ,init ,@(when sp (list (gensym-var sp))))))
 
-                         ,@body))
-                     body))
+                 (bind-required (body)
+                   (loop
+                      for (arg . args) on cm-required
+                      for (gf-arg . gf-args) on gf-required
+                      collect (list (gensym-var arg) gf-arg) into bindings
+                      finally
+                        (return
+                          `(let (,@bindings ,@(mapcar #'gensym-var args))
+                             ,body))))
 
-               (bind-optional (body)
-                 (if cm-optional
-                     `((destructuring-bind (&optional ,@(mapcar #'gensym-optional cm-optional))
-                           (sub-arg-list ,args ,(length gf-required) ,(length gf-optional))
+                 (bind-optional (body)
+                   (loop
+                      for (arg . args) on cm-optional
+                      for (gf-arg . gf-args) on gf-optional
+                      for (var nil sp) = (gensym-optional arg)
+                      collect `(,var ,gf-arg) into bindings
+                      if sp collect `(,sp t) into bindings
+                      finally
+                        (return
+                          `(let (,@bindings
+                                 ,@(extra-optional-bindings args))
+                             ,body))))
 
-                         ,@body))
-                     body))
+                 (extra-optional-bindings (args)
+                   (loop
+                      for (var init sp) in (mapcar #'gensym-optional args)
+                      collect `(,var ,init)
+                      if sp collect sp))
 
-               (bind-key-rest (body)
-                 (if (or cm-rest cm-key)
-                     `((destructuring-bind
-                             (,@(when cm-rest `(&rest ,(gensym-var cm-rest)))
-                              &key ,@(mapcar #'gensym-key cm-key) &allow-other-keys)
+                 (bind-rest (body)
+                   (if cm-rest
+                       `(let ((,cm-rest ,rest))
+                          ,body)
+                       body))
 
-                           ,@body))
-                     body)))
+                 (bind-key (body)
+                   (if cm-key
+                       `(destructuring-bind (,@(mapcar #'gensym-key cm-key) &allow-other-keys)
+                            ,cm-rest
 
-        (-> body
-            bind-required
-            bind-optional
-            bind-key-rest)))))
+                          ,body)
+                       body))
 
-(defun sub-arg-list (list start &optional length)
-  (if length
-      (loop
-         for i from start below (+ start length)
-         for elem in list
-         collect elem)
+                 (bind-aux (body)
+                   (if cm-aux
+                       `(let ,cm-aux ,body)
+                       body)))
 
-      (nthcdr start list)))
+          (destructure-args
+           args
+           (unparse-lambda-list
+            gf-required gf-optional rest nil nil nil nil)
+
+           (-> body
+               bind-required
+               bind-optional
+               bind-rest
+               bind-key
+               bind-aux
+               list)))))))
