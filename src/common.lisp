@@ -458,6 +458,18 @@
 
 ;;; Static Dispatching
 
+(define-declaration static-dispatch-inhibit (args)
+  "Inhibit static dispatching in an environment.
+
+   Takes one argument a boolean flag: True (T) to inhibit static
+   dispatching for all generic function calls in the environment, or
+   false (NIL) to allow static dispatching."
+
+  (destructuring-bind (inhibit) args
+    (values
+     :declare
+     (cons 'inhibit inhibit))))
+
 (defmacro static-dispatch-test-hook ()
   "A form of this macro is inserted in the output of the
    STATIC-DISPATCH compiler macro, in order to allow certain test code
@@ -481,17 +493,20 @@
   (let* ((levels (declaration-information 'optimize env))
          (speed (or (second (assoc 'speed levels)) 1))
          (safety (or (second (assoc 'safety levels)) 1))
-         (debug (or (second (assoc 'debug levels)) 1)))
+         (debug (or (second (assoc 'debug levels)) 1))
 
-    (and (= speed 3)
-         (< safety 3)
-         (< debug 3)
-         (not
-          (eq 'notinline
-              (->> (function-information name env)
-                   (nth-value 2)
-                   (assoc 'inline)
-                   (cdr)))))))
+         (inhibit (declaration-information 'inhibit env)))
+
+    (unless inhibit
+      (and (= speed 3)
+           (< safety 3)
+           (< debug 3)
+           (not
+            (eq 'notinline
+                (->> (function-information name env)
+                     (nth-value 2)
+                     (assoc 'inline)
+                     (cdr))))))))
 
 (defun should-check-types? (env)
   "Returns true if CHECK-TYPE forms should be added in the body of

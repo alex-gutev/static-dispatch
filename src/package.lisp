@@ -65,7 +65,8 @@
 	   :enable-static-dispatch
 	   :static-dispatch
 
-           :static-dispatch-warn))
+           :static-dispatch-warn
+           :static-dispatch-inhibit))
 
 (uiop:define-package :static-dispatch-cl
     (:use)
