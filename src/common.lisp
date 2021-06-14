@@ -513,10 +513,6 @@
   "Environment in which the current generic function is being
    statically dispatched.")
 
-(defvar *full-arg-list-form* nil
-  "Bound to a from which constructs the full argument list for use as
-   the default argument list in CALL-NEXT-METHOD.")
-
 (defvar *call-args* nil
   "Bound to the argument list of the current generic function call.")
 

@@ -118,6 +118,10 @@
     the generic function lambda-list."))
 
 
+(defvar *full-arg-list-form* nil
+  "Bound to a from which constructs the full argument list for use as
+   the default argument list in CALL-NEXT-METHOD.")
+
 (defvar *method-combination-functions* (make-hash-table :test #'eq)
   "Hash-table mapping method-combination names to the functions which
    implement them for the static-dispatch system.
