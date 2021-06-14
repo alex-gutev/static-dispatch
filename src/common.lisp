@@ -193,9 +193,10 @@
 
               (declare (ignore qualifiers))
 
-              `(progn
-                 ,(make-add-method-info name method body)
-                 ,(make-static-dispatch name lambda-list specializers)))
+              `(when (combination-options ',name)
+                 (progn
+                   ,(make-add-method-info name method body)
+                   ,(make-static-dispatch name lambda-list specializers))))
 
           (error (e)
             (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~a" e)))
