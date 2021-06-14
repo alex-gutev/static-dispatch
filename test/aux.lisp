@@ -98,6 +98,8 @@
   "Test static dispatching of :BEFORE method without primary method"
 
   (locally (declare (inline foo) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+    (declare (static-dispatch-warn none))
+
     (is-print
      (handler-case (foo "x")
        (error () nil))
@@ -109,6 +111,8 @@
   "Test static dispatching of :AFTER method without primary method"
 
   (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+    (declare (static-dispatch-warn none))
+
     (is-print
      (handler-case (bar 1)
        (error () nil))
@@ -120,6 +124,8 @@
   "Test static dispatching of :AROUND method without primary method"
 
   (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+    (declare (static-dispatch-warn none))
+
     (test-error (bar "hello") error)
     (test-error (bar 10) error)))
 
