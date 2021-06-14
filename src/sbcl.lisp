@@ -246,11 +246,12 @@
                 (error "No applicable methods for argument types: ~s" types)))))
 
     (combin-destructure-args-error (e)
-      (unless args
-        (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)))
+      (when args
+        (dispatch-warn (sb-c::node-lexenv node) name e)
+        nil))
 
     (error (e)
-      (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
+      (dispatch-warn (sb-c::node-lexenv node) name e)
       nil)))
 
 (defun should-apply? (methods type-list)

@@ -34,6 +34,7 @@
 		:components
 		((:file "package")
 		 (:file "util")
+                 (:file "warnings")
                  (:file "combin")
                  (:file "combinations")
 		 (:file "common")

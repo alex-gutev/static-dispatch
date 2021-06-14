@@ -69,7 +69,7 @@
 	    (static-overload name args env)
 
 	  (error (e)
-            (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
+            (dispatch-warn env name e)
             whole)))))
    whole))
 

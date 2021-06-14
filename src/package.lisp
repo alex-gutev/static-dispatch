@@ -63,7 +63,9 @@
            :method-combination-error
 
 	   :enable-static-dispatch
-	   :static-dispatch))
+	   :static-dispatch
+
+           :static-dispatch-warn))
 
 (uiop:define-package :static-dispatch-cl
     (:use)
