@@ -101,7 +101,7 @@ generated.
 ### Prevent Static Dispatching
 
 Static dispatching can be inhibited for a generic function, even when
-the safety level of `3`, by declaring that function `NOTINLINE`.
+the safety level is `3`, by declaring that function `NOTINLINE`.
 
 **Example:**
 
@@ -266,7 +266,7 @@ the same behaviour just implemented for different types.
 
 **NOTE:** If the type of an argument cannot be determined, or is
 declared `T`, the generic function will not be statically dispatched
-even if an `INLINE` and `OPTIMIZE` declaration is in place.
+even if when the appropriate `OPTIMIZE` declaration is in place.
 
 Another aspect in which the semantics of generic functions are changed
 is that when dynamically dispatched the list of methods can be changed
@@ -304,11 +304,6 @@ on statically dispatched generic function calls.
 
 ## Status
 
-Supports class and EQL specializers, CALL-NEXT-METHOD, NEXT-METHOD-P
-and auxiliary methods.
-
-Does not support user-defined method combinations.
-
 Tested on: CCL, SBCL, Clisp, ECL, CMUCL and ABCL.
 
 Tests pass (static dispatch is successful) on: SBCL, CCL, Clisp and
@@ -335,13 +330,10 @@ Walking](https://alex-gutev.github.io/cl-environments/#ensuring_code_walking).
 
 ### Planned Future Additions
 
-* Increased type inference of arguments allowing for more complex
-  expressions.
 * Removal of `CALL-NEXT-METHOD` and `NEXT-METHOD-P` if not used by the
   method.
 * Optimization of `CALL-NEXT-METHOD`, where it is inlined in some cases.
 * Method return type declarations.
-* Support for other method combinations.
 * Enhance generic functions to allow for specialization on all types
   rather than just classes.
 * Debugging options for emitting a warning when a generic function
