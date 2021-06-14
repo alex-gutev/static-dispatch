@@ -187,6 +187,9 @@
 
     (destructuring-bind (combination options) options
       (let* ((combin-fn (combination-function combination)))
+        (unless combin-fn
+          (error "Missing function for method-combination ~s." combination))
+
         (check-type combin-fn function)
 
         (unless known?
