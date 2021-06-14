@@ -212,6 +212,54 @@ otherwise returns `FORM` as is.
 `SB-C:DEFTRANSFORM`, specified directly on the argument types, are
 used rather than compiler macros.
 
+
+### Silencing Warnings
+
+By default a style-warning is emitted whenever static-dispatch fails
+for any reason. Static dispatching can fail if the types of the
+arguments cannot be determined, there are no applicable methods, or
+other error conditions such as encountering a malformed form, or
+missing method information due to it not being defined with
+`DEFMETHOD` from the `STATIC-DISPATCH` package.
+
+The declaration `STATIC-DISPATCH-WARN` controls for which static
+dispatch failures, a warning is emitted, for generic function calls in
+the environment of the declaration.
+
+#### STATIC-DISPATCH-WARN
+
+Declaration: `STATIC-DISPATCH-WARN LEVEL`
+
+Control for which static dispatch failures a warning is emitted.
+
+`LEVEL` is the warning level, which currently can be one of the
+following symbols:
+
+`ALL` - Emit a warning for every static dispatch failure.
+
+`NONE` - Do not emit a warning for any static dispatch failure.
+
+The `ALL` level is set by default when there is no declaration in
+place.
+
+**NOTE:** Any symbol, in any package, with _symbol-name_ equal to
+`ALL` or `NONE` can be used.
+
+**Example:**
+
+```lisp
+(let ((x 1) (y 2))
+  (declare (optimize speed))
+  (declare (static-dispatch-warn none)) ; Do not emit any warnings
+
+  ;; No warnings emitted, for static dispatch failures,
+  ;; in environment of LET form.
+
+  ;; Generic function add. Static-dispatch will fail on most implementations
+  ;; Since the types of X and Y have not been declared
+  (add x y))
+```
+
 ### Common Pitfalls
 
 The semantics of generic functions are changed when statically
