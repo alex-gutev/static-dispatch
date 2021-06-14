@@ -106,7 +106,7 @@
    function GF-NAME."
 
   (setf (gethash spec (ensure-gf-methods gf-name))
-	value))
+        value))
 
 (defun ensure-method-info (gf-name qualifiers specializers &key body lambda-list remove-on-redefine-p)
   "Ensures that the method table, within *GENERIC-FUNCTION-TABLE*, of
@@ -120,9 +120,9 @@
        (list qualifiers specializers) (ensure-gf-methods gf-name)
 
        (make-instance 'method-info
-		      :specializers specializers
-		      :qualifiers qualifiers
-		      :remove-on-redefine-p remove-on-redefine-p))
+                      :specializers specializers
+                      :qualifiers qualifiers
+                      :remove-on-redefine-p remove-on-redefine-p))
 
     (setf (lambda-list it) lambda-list)
     (setf (body it) body)))
@@ -136,7 +136,7 @@
     (iter
       (for (key method) in-hashtable methods)
       (when (remove-on-redefine-p method)
-	(remhash key methods)))))
+        (remhash key methods)))))
 
 (defun method-spec (method-info)
   "Return the method specifier, i.e. the key used within the method table.
@@ -153,11 +153,11 @@
    (mapcar
     (lambda (specializer)
       (match specializer
-	((list 'eql value)
-	 (intern-eql-specializer value))
+        ((list 'eql value)
+         (intern-eql-specializer value))
 
-	(_
-	 (find-class specializer nil))))
+        (_
+         (find-class specializer nil))))
     specializers)
    nil)
 
@@ -188,16 +188,16 @@
               (c2mop:defmethod ,name ,@args))))
 
        ,(handler-case
-	    (multiple-value-bind (qualifiers specializers lambda-list body)
-	        (parse-method args)
+            (multiple-value-bind (qualifiers specializers lambda-list body)
+                (parse-method args)
 
               (declare (ignore qualifiers))
 
               `(progn
-	         ,(make-add-method-info name method body)
+                 ,(make-add-method-info name method body)
                  ,(make-static-dispatch name lambda-list specializers)))
 
-	  (error (e)
+          (error (e)
             (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~a" e)))
 
        ,method)))
@@ -218,12 +218,12 @@
            ,@(handler-case
                  (append
                   (mappend
-	           (lambda-match
-	             ((list* :method args)
-	              (multiple-value-bind (qualifiers specializers lambda-list body)
-		          (parse-method args)
+                   (lambda-match
+                     ((list* :method args)
+                      (multiple-value-bind (qualifiers specializers lambda-list body)
+                          (parse-method args)
 
-		        (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
+                        (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
                                  ,(make-add-method-info name method body :remove-on-redefine-p t))
 
                               (make-static-dispatch name lambda-list specializers))))
@@ -232,12 +232,12 @@
                       (setf combination name)
                       (setf combination-options options)))
 
-	           options)
+                   options)
 
                   `((setf (combination-options ',name)
                           '(,combination ,combination-options))))
 
-	       (error (e)
+               (error (e)
                  (simple-style-warning "Error parsing DEFGENERIC form:~%~a" e)))
 
            ,gf)))))
@@ -295,7 +295,7 @@
        (return (values specializers (append required (cons x rest)))))
 
       ((or (list x specializer)
-	   x)
+           x)
        (collect x into required)
        (collect (or specializer t) into specializers)))
 
@@ -335,15 +335,15 @@
                (error "Missing method info for method ~s" method))))
 
     (let* ((gf (fdefinition name))
-	   (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
-	   (types (order-by-precedence precedence types))
+           (precedence (precedence-order (generic-function-lambda-list gf) (generic-function-argument-precedence-order gf)))
+           (types (order-by-precedence precedence types))
            (methods (generic-function-methods gf)))
 
       (when (every #'check-method methods)
         (-<> (order-method-specializers methods precedence)
-	     (applicable-methods types)
-	     (sort-methods)
-	     (mapcar #'cdr <>))))))
+             (applicable-methods types)
+             (sort-methods)
+             (mapcar #'cdr <>))))))
 
 
 (defun precedence-order (lambda-list precedence)
@@ -380,28 +380,28 @@
    for applicability."
 
   (labels ((filter-methods (types methods)
-	     (when methods
-	       (if types
-		   (->> (filter-on-type methods (first types))
-			(mapcar #'next-specializer)
-			(filter-methods (rest types)))
-		   methods)))
+             (when methods
+               (if types
+                   (->> (filter-on-type methods (first types))
+                        (mapcar #'next-specializer)
+                        (filter-methods (rest types)))
+                   methods)))
 
-	   (filter-on-type (methods type)
-	     (if (and remove-t (eq type t))
-		 (let ((methods (remove 'eql methods :key (compose #'ensure-car #'caar)))) ; Remove all EQL methods
-		   (and (every (compose (curry #'eq t) #'caar) methods) methods))
-		 (remove type methods :test-not #'subtypep :key #'caar)))
+           (filter-on-type (methods type)
+             (if (and remove-t (eq type t))
+                 (let ((methods (remove 'eql methods :key (compose #'ensure-car #'caar)))) ; Remove all EQL methods
+                   (and (every (compose (curry #'eq t) #'caar) methods) methods))
+                 (remove type methods :test-not #'subtypep :key #'caar)))
 
-	   (next-specializer (method)
-	     (cons (cdar method) (cdr method)))
+           (next-specializer (method)
+             (cons (cdar method) (cdr method)))
 
-	   (copy-specializer (method)
-	     (cons (car method) method)))
+           (copy-specializer (method)
+             (cons (car method) method)))
 
     (->> (mapcar #'copy-specializer methods)
-	 (filter-methods types)
-	 (mapcar #'cdr))))
+         (filter-methods types)
+         (mapcar #'cdr))))
 
 (defun sort-methods (methods)
   "Sorts METHODS by specificity."
@@ -413,45 +413,45 @@
    specializer list S2."
 
   (labels ((specializer< (s1 s2)
-	     (match* (s1 s2)
-	       (((list* (list 'eql o1) s1)
-		 (list* (list 'eql o2) s2))
+             (match* (s1 s2)
+               (((list* (list 'eql o1) s1)
+                 (list* (list 'eql o2) s2))
 
-		(if (eql o1 o2)
-		    (specializer< s1 s2)
-		    :equal))
+                (if (eql o1 o2)
+                    (specializer< s1 s2)
+                    :equal))
 
-	       (((list* (list 'eql _) _) _)
-		:less)
+               (((list* (list 'eql _) _) _)
+                :less)
 
-	       ((_ (list* (list 'eql _) _))
-		:greater)
+               ((_ (list* (list 'eql _) _))
+                :greater)
 
-	       (((list* type1 s1)
-		 (list* type2 s2))
+               (((list* type1 s1)
+                 (list* type2 s2))
 
-		(let ((class1 (find-class type1))
-		      (class2 (find-class type2)))
+                (let ((class1 (find-class type1))
+                      (class2 (find-class type2)))
 
-		  (ensure-finalized class1)
-		  (ensure-finalized class2)
+                  (ensure-finalized class1)
+                  (ensure-finalized class2)
 
-		  (let ((prec1 (rest (class-precedence-list class1)))
-			(prec2 (rest (class-precedence-list class2))))
-		    (cond
-		      ((member class2 prec1) :less)
-		      ((member class1 prec2) :greater)
-		      ((eq class1 class2) (specializer< s1 s2))
-		      (t
-		       (or
-			(when (and s1 s2)
-			  (let ((order (specializer< s1 s2)))
-			    (unless (eq order :equal)
-			      order)))
+                  (let ((prec1 (rest (class-precedence-list class1)))
+                        (prec2 (rest (class-precedence-list class2))))
+                    (cond
+                      ((member class2 prec1) :less)
+                      ((member class1 prec2) :greater)
+                      ((eq class1 class2) (specializer< s1 s2))
+                      (t
+                       (or
+                        (when (and s1 s2)
+                          (let ((order (specializer< s1 s2)))
+                            (unless (eq order :equal)
+                              order)))
 
-			(if (string< (class-name class1) (class-name class2))
-			    :less
-			    :greater))))))))))
+                        (if (string< (class-name class1) (class-name class2))
+                            :less
+                            :greater))))))))))
     (eq (specializer< s1 s2) :less)))
 
 
@@ -577,16 +577,16 @@
        (for (type . rest-types) initially types then rest-types)
 
        (cond
-	 ((constantp arg *env*)
-	  (collect arg into arg-list))
+         ((constantp arg *env*)
+          (collect arg into arg-list))
 
-	 (t
-	  (let ((var (gensym (format nil "a~a" i))))
-	    (collect (list var arg) into bindings)
-	    (collect var into arg-list)
+         (t
+          (let ((var (gensym (format nil "a~a" i))))
+            (collect (list var arg) into bindings)
+            (collect var into arg-list)
 
-	    (when type
-	      (collect `(type ,type ,var) into declarations)))))
+            (when type
+              (collect `(type ,type ,var) into declarations)))))
 
        (finally (return (values bindings arg-list declarations)))))))
 
@@ -697,28 +697,28 @@
 
       `(block ,(block-name *current-gf*)
          ,(destructure-args
-	   args
-	   lambda-list
+           args
+           lambda-list
 
-	   (multiple-value-bind (forms declarations)
-	       (parse-body body :documentation t)
+           (multiple-value-bind (forms declarations)
+               (parse-body body :documentation t)
 
-	     `(,@(when args
-		   (-> (subseq lambda-list 0 (length specializers))
-		       (make-ignorable-declarations)
-		       list))
+             `(,@(when args
+                   (-> (subseq lambda-list 0 (length specializers))
+                       (make-ignorable-declarations)
+                       list))
 
-	         ,@(when types
-		     (list (make-type-declarations
+                 ,@(when types
+                     (list (make-type-declarations
                             (subseq lambda-list 0 (length specializers))
                             types)))
 
-	         ,@declarations
+                 ,@declarations
 
-	         ,@(when (and (null types) check-types)
-		     (make-type-checks lambda-list specializers))
+                 ,@(when (and (null types) check-types)
+                     (make-type-checks lambda-list specializers))
 
-	         ,@forms)))))))
+                 ,@forms)))))))
 
 (defun make-method-function-call (function args &optional extra)
   "Generate call to the function which implements a method.
@@ -821,16 +821,16 @@
 
     (cons
      (handler-case
-	 `(let* ,(destructure-list lambda-list args)
-	    ,@body)
+         `(let* ,(destructure-list lambda-list args)
+            ,@body)
 
        (error ()
-	 `(destructuring-bind ,lambda-list (list ,@args)
-	    ,@body))))
+         `(destructuring-bind ,lambda-list (list ,@args)
+            ,@body))))
 
     (symbol
      `(destructuring-bind ,lambda-list ,args
-	,@body))))
+        ,@body))))
 
 (defun destructure-list (lambda-list list)
   "Destructure a list.
@@ -844,89 +844,89 @@
    fails an error condition is signalled."
 
   (labels ((optional-vars (optional)
-	     ;; Extract variable names from optional argument
-	     ;; specifiers.
+             ;; Extract variable names from optional argument
+             ;; specifiers.
 
-	     (mappend #'optional-var optional))
+             (mappend #'optional-var optional))
 
-	   (optional-var (spec)
-	     ;; Extract variable names from a single optional argument
-	     ;; specifier.
+           (optional-var (spec)
+             ;; Extract variable names from a single optional argument
+             ;; specifier.
 
-	     (ematch spec
-	       ((list name _ nil)
-		(list name))
+             (ematch spec
+               ((list name _ nil)
+                (list name))
 
-	       ((list name _ sp)
-		(list name sp))))
+               ((list name _ sp)
+                (list name sp))))
 
-	   (key-vars (key)
-	     ;; Extract variable names from keyword argument
-	     ;; specifiers.
+           (key-vars (key)
+             ;; Extract variable names from keyword argument
+             ;; specifiers.
 
-	     (mappend #'key-var key))
+             (mappend #'key-var key))
 
-	   (key-var (spec)
-	     ;; Extract variable names from a single keyword argument
-	     ;; specifier.
+           (key-var (spec)
+             ;; Extract variable names from a single keyword argument
+             ;; specifier.
 
-	     (ematch spec
-	       ((list (list _ name) _ nil)
-		(list name))
+             (ematch spec
+               ((list (list _ name) _ nil)
+                (list name))
 
-	       ((list (list _ name) _ sp)
-		(list name sp))))
+               ((list (list _ name) _ sp)
+                (list name sp))))
 
-	   (aux-vars (aux)
-	     ;; Extract variable names from auxiliary argument
-	     ;; specifiers.
+           (aux-vars (aux)
+             ;; Extract variable names from auxiliary argument
+             ;; specifiers.
 
-	     (mapcar #'first aux))
+             (mapcar #'first aux))
 
-	   (quote-init-form (spec)
-	     ;; Quote the initialization form in an argument
-	     ;; specifier. If the argument does not have an
-	     ;; initialization form, returns it as is.
+           (quote-init-form (spec)
+             ;; Quote the initialization form in an argument
+             ;; specifier. If the argument does not have an
+             ;; initialization form, returns it as is.
 
-	     (match spec
-	       ((list* name init sp)
-		(list* name `',init sp))
+             (match spec
+               ((list* name init sp)
+                (list* name `',init sp))
 
-	       (_ spec)))
+               (_ spec)))
 
-	   (constant-keywords-p (args)
-	     ;; Check that each of the keywords in the keyword portion
-	     ;; are constant expressions.
-	     (loop for arg in args by #'cddr
-		  always (constantp arg *env*))))
+           (constant-keywords-p (args)
+             ;; Check that each of the keywords in the keyword portion
+             ;; are constant expressions.
+             (loop for arg in args by #'cddr
+                  always (constantp arg *env*))))
 
     (multiple-value-bind (required optional rest key allow-other-keys aux)
-	(parse-ordinary-lambda-list lambda-list)
+        (parse-ordinary-lambda-list lambda-list)
 
       (when (and allow-other-keys
-		 (->> (+ (length required) (length optional))
-		      (subseq list)
-		      constant-keywords-p
-		      not))
-	(error "Compile-time destructuring failed: non-constant keywords."))
+                 (->> (+ (length required) (length optional))
+                      (subseq list)
+                      constant-keywords-p
+                      not))
+        (error "Compile-time destructuring failed: non-constant keywords."))
 
       (let ((vars (append required
-			  (optional-vars optional)
-			  (ensure-list rest)
-			  (key-vars key)
-			  (aux-vars aux))))
+                          (optional-vars optional)
+                          (ensure-list rest)
+                          (key-vars key)
+                          (aux-vars aux))))
 
-	(eval
-	 `(destructuring-bind ,(mapcar #'quote-init-form lambda-list)
-	      (list ,@(mapcar (curry #'list 'quote) list))
+        (eval
+         `(destructuring-bind ,(mapcar #'quote-init-form lambda-list)
+              (list ,@(mapcar (curry #'list 'quote) list))
 
-	    (list
-	     ,@(loop
-		  for var in vars
-		  collect
-		    (if (eq var rest)
-			`(list ',var `(list ,@,var))
-			`(list ',var ,var))))))))))
+            (list
+             ,@(loop
+                  for var in vars
+                  collect
+                    (if (eq var rest)
+                        `(list ',var `(list ,@,var))
+                        `(list ',var ,var))))))))))
 
 (defun next-method-default-args (args)
   "Generate the default CALL-NEXT-METHOD argument list form.
