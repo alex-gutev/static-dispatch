@@ -17,10 +17,10 @@ when used heavily in numeric code.
 
 ## Usage
 
-Generic functions and methods are defined as usual, however using
-`DEFGENERIC` and `DEFMETHOD` from the `STATIC-DISPATCH-CL` package,
-rather than the `CL` package. By default, generic functions are
-dispatched dynamically, and are identical to standard Common Lisp
+Generic functions and their methods are defined as usual, however
+using `DEFGENERIC` and `DEFMETHOD` from the `STATIC-DISPATCH-CL`
+package rather than the `CL` package. By default, generic functions
+are dispatched dynamically, and are identical to standard Common Lisp
 generic functions.
 
 A generic function call is statically dispatched when an `OPTIMIZE`
@@ -53,12 +53,13 @@ If the types of the arguments cannot be determined, no method is
 chosen and the generic function call form is left as is, which
 falls back to the standard dynamic dispatch.
 
-The standard method combination is supported, including `:BEFORE`,
-`:AFTER` and `:AROUND` methods, as well as `CALL-NEXT-METHOD` and
-`NEXT-METHOD-P`. User-defined method combinations are not
-supported. You can still define a generic function with a user-defined
-method combination in your code, however it will not be statically
-dispatched.
+**NOTE:** All standard method combinations are supported as well as
+user-defined method combinations, which are defined with
+`DEFINE-METHOD-COMBINATION` from the `STATIC-DISPATCH-CL` package. If
+a generic function uses a method-combination, which is defined using
+`DEFINE-METHOD-COMBINATION` from the `COMMON-LISP` package, then calls
+to the generic function will not be statically dispatched, and will be
+dynamically dispatched instead.
 
 **NOTE:** The package `STATIC-DISPATCH-CL` exports all symbols from the `CL`
 package as well as the symbols in the `STATIC-DISPATCH` package,
