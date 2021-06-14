@@ -79,7 +79,7 @@
                                  collect `(nth ,i ,args))
                               node)))
 
-                       (or (static-overload ',name ',args types ,node)
+                       (or (static-overload ',name ',args ',type-list types ,node)
                            (sb-c::give-up-ir1-transform))))))
 
              (sb-c:deftransform ,name (,lambda-list ,(or type-list specializers) * :policy ,+static-dispatch-policy+ :node ,node)
@@ -89,7 +89,7 @@
                      (*call-args* ,(make-reconstruct-static-arg-list lambda-list))
                      (,types ,(make-dispatch-type-list required node)))
 
-                 (or (static-overload ',name nil ,types ,node)
+                 (or (static-overload ',name nil ',type-list ,types ,node)
                      (sb-c::give-up-ir1-transform))))))))))
 
 (defun make-dispatch-type-list (args node)
@@ -230,7 +230,7 @@
   (declare (ignore env))
   whole)
 
-(defun static-overload (name args types node)
+(defun static-overload (name args type-list types node)
   (handler-case
       (progn
         (unless (and (fboundp name)
@@ -240,13 +240,35 @@
         (let* ((gf (fdefinition name))
                (methods (compute-applicable-methods% name types)))
 
-          (if methods
-              (inline-call gf methods args types (sb-c:policy node (> safety 0)))
-              (error "No applicable methods for argument types: ~s" types))))
+          (when (should-apply? methods type-list)
+            (if methods
+                (inline-call gf methods args types (sb-c:policy node (> safety 0)))
+                (error "No applicable methods for argument types: ~s" types)))))
 
     (error (e)
       (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
       nil)))
+
+(defun should-apply? (methods type-list)
+  "Check whether the current transform should be applied.
+
+   A transform is generated for each method, therefore each transform
+   should only be applied if the most specific method is the
+   transform's method. This is done by comparing the type-list for the
+   most specific method to the transform's type-list and if they
+   match, the transform is applied.
+
+   METHODS is the sorted list of applicable methods.
+
+   TYPE-LIST is the type list for the current transform.
+
+   Return true if the transform should be applied."
+
+  (when methods
+    (let ((method (first methods)))
+      (equal (lambda-list->type-list (method-lambda-list method)
+                                     (mapcar #'specializer->cl (method-specializers method)))
+             type-list))))
 
 
 ;;; Utilities
