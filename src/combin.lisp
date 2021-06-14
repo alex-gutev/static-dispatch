@@ -105,6 +105,18 @@
     match any group specifier. Signalled with the INVALID-METHOD-ERROR
     function."))
 
+(define-condition combin-destructure-args-error (error)
+  ()
+
+  (:report
+   (lambda (e s)
+     (declare (ignore e))
+     (format s "Error generic function arguments in method-combination.")))
+
+  (:documentation
+   "Represents an error in destructuring the (rest/keyword) section of
+    the generic function lambda-list."))
+
 
 (defvar *method-combination-functions* (make-hash-table :test #'eq)
   "Hash-table mapping method-combination names to the functions which
@@ -483,90 +495,89 @@
    Returns a list of forms which wrap BODY in code that destructures
    the arguments according to LAMBDA-LIST."
 
-  (multiple-value-bind (gf-required gf-optional)
+  (multiple-value-bind (gf-required gf-optional gf-rest gf-key gf-allow-other-keys gf-aux gf-keyp)
       (parse-ordinary-lambda-list (generic-function-lambda-list gf))
+
+    (declare (ignore gf-key gf-allow-other-keys gf-aux))
 
     (multiple-value-bind (cm-required cm-optional cm-rest cm-key allow-other-keys cm-aux)
         (parse-ordinary-lambda-list lambda-list)
 
       (declare (ignore allow-other-keys))
 
-      (with-gensyms (rest)
-        (labels ((gensym-var (var)
-                   (cdr (assoc var gensyms)))
+      (when (and (null args)
+                 (null gf-rest)
+                 gf-keyp
+                 (or cm-rest cm-key))
 
-                 (gensym-optional (opt)
-                   (destructuring-bind (var init sp) opt
-                     `(,(gensym-var var) ,init ,@(when sp (list (gensym-var sp))))))
+        (error 'combin-destructure-args-error))
 
-                 (gensym-key (key)
-                   (destructuring-bind ((key var) init sp) key
-                     `((,key ,(gensym-var var)) ,init ,@(when sp (list (gensym-var sp))))))
+      (labels ((gensym-var (var)
+                 (cdr (assoc var gensyms)))
 
-                 (bind-required (body)
-                   (loop
-                      for (arg . args) on cm-required
-                      for gf-arg in gf-required
-                      collect (list (gensym-var arg) gf-arg) into bindings
-                      finally
-                        (return
-                          `(let (,@bindings ,@(mapcar #'gensym-var args))
-                             ,body))))
+               (gensym-optional (opt)
+                 (destructuring-bind (var init sp) opt
+                   `(,(gensym-var var) ,init ,@(when sp (list (gensym-var sp))))))
 
-                 (bind-optional (body)
-                   (loop
-                      for (arg . args) on cm-optional
-                      for gf-arg in gf-optional
-                      for (var nil sp) = (gensym-optional arg)
-                      collect `(,var ,gf-arg) into bindings
-                      if sp collect `(,sp t) into bindings
-                      finally
-                        (return
-                          `(let (,@bindings
-                                 ,@(extra-optional-bindings args))
-                             ,body))))
+               (gensym-key (key)
+                 (destructuring-bind ((key var) init sp) key
+                   `((,key ,(gensym-var var)) ,init ,@(when sp (list (gensym-var sp))))))
 
-                 (extra-optional-bindings (args)
-                   (loop
-                      for (var init sp) in (mapcar #'gensym-optional args)
-                      collect `(,var ,init)
-                      if sp collect sp))
+               (make-required (required)
+                 (let* ((len-required (length required))
+                        (len-gf-required (length gf-required)))
 
-                 (bind-rest (body)
-                   (if cm-rest
-                       `(let ((,cm-rest ,rest))
-                          ,body)
-                       body))
+                   (if (> len-required len-gf-required)
+                       (values
+                        (subseq required 0 len-gf-required)
+                        (subseq required len-gf-required)
+                        nil)
 
-                 (bind-key (body)
-                   (if cm-key
-                       `(destructuring-bind (,@(mapcar #'gensym-key cm-key) &allow-other-keys)
-                            ,cm-rest
+                       (let ((extra (make-gensym-list (- len-gf-required len-required))))
+                         (values
+                          (append required extra)
+                          nil
+                          extra)))))
 
-                          ,body)
-                       body))
+               (make-optional (optional)
+                 (let* ((len-optional (length optional))
+                        (len-gf-optional (length gf-optional)))
 
-                 (bind-aux (body)
-                   (if cm-aux
-                       `(let ,cm-aux ,body)
-                       body))
+                   (if (> len-optional len-gf-optional)
+                       (values
+                        (subseq optional 0 len-gf-optional)
+                        (optional-bindings (subseq optional len-gf-optional))
+                        nil)
 
-                 (optional-vars (optional)
-                   (destructuring-bind (var init sp) optional
-                     (declare (ignore init))
+                       (let ((extra (make-gensym-list (- len-gf-optional len-optional))))
+                         (values
+                          (append optional extra)
+                          nil
+                          extra)))))
 
-                     (cons var (ensure-list sp)))))
+               (optional-bindings (optional)
+                 (loop
+                    for (var init sp) in optional
+                    collect (list var init)
+                    if sp collect (list sp nil))))
 
-          (destructure-args
-           args
-           (unparse-lambda-list
-            gf-required gf-optional rest nil nil nil nil)
+        (multiple-value-bind (required required-unused required-extra)
+            (make-required (mapcar #'gensym-var cm-required))
 
-           (->> body
-                bind-required
-                bind-optional
-                bind-rest
-                bind-key
-                bind-aux
-                (list
-                 `(declare (ignorable ,rest ,@gf-required ,@(mappend #'optional-vars gf-optional)))))))))))
+          (multiple-value-bind (optional optional-unused optional-extra)
+              (make-optional (mapcar #'gensym-optional cm-optional))
+
+            `(destructuring-bind
+                   (,@required
+                    ,@(when optional `(&optional ,@optional))
+                    ,@(when cm-rest `(&rest ,(gensym-var cm-rest)))
+                    &key
+                    ,@(when cm-key `(&key ,@(mapcar #'gensym-key cm-key)))
+                    &allow-other-keys
+                    ,@(when cm-aux `(&aux ,@cm-aux)))
+                 ,*full-arg-list-form*
+
+               (declare (ignorable ,@required-extra ,@optional-extra))
+
+               (let (,@required-unused ,@optional-unused)
+                 ,body))))))))

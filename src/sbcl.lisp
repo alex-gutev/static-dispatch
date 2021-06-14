@@ -245,6 +245,10 @@
                 (inline-call gf methods args types (sb-c:policy node (> safety 0)))
                 (error "No applicable methods for argument types: ~s" types)))))
 
+    (combin-destructure-args-error (e)
+      (unless args
+        (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)))
+
     (error (e)
       (simple-style-warning "Static dispatch for ~s failed:~%~2T~a" name e)
       nil)))
