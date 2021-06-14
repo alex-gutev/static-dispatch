@@ -213,7 +213,7 @@ otherwise returns `FORM` as is.
 used rather than compiler macros.
 
 
-### Silencing Warnings
+### Static Dispatch Failure Warnings
 
 By default a style-warning is emitted whenever static-dispatch fails
 for any reason. Static dispatching can fail if the types of the
