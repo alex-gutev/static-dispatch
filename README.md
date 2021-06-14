@@ -54,7 +54,7 @@ chosen and the generic function call form is left as is, which
 falls back to the standard dynamic dispatch.
 
 **NOTE:** All standard method combinations are supported as well as
-user-defined method combinations, which are defined with
+user-defined method combinations, as long as they are defined with
 `DEFINE-METHOD-COMBINATION` from the `STATIC-DISPATCH-CL` package. If
 a generic function uses a method-combination, which is defined using
 `DEFINE-METHOD-COMBINATION` from the `COMMON-LISP` package, then calls
