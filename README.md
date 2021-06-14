@@ -123,6 +123,23 @@ a `SAFETY`, or `DEBUG` level of `3`.
     (FOO X Y)) ; FOO not statically dispatched
 ```
 
+Static dispatch can also be explicitly disabled with the
+`STATIC-DISPATCH-INHIBIT` declaration, which accepts one argument a
+Boolean flag. If the flag is true (`T`) static dispatching is disabled
+entirely for all generic function calls in the environment of the
+declaration regardless of the `OPTIMIZE` levels or `NOTINLINE`
+declarations. If the flag is `NIL`, static dispatching is reenabled in
+the environment, though will still only be performed if the
+appropriate `OPTIMIZE` declarations are in place.
+
+**Example:**
+
+```lisp
+(locally (declare (optimize (speed 3)))
+    (declare (static-dispatch-inhibit t)) ; Disable static dispatch in LOCALLY form
+    (declare (type integer x y))
+    (FOO X Y)) ; FOO not statically dispatched
+```
 
 ### Optimize Declarations
 
