@@ -78,9 +78,7 @@
 
            (make-if (method else)
              `(if (subtypep ,type ',(type-qualifier method))
-                  (progn
-                    (format t "Called Method: ~s~%" ,type)
-                    (call-method ,method))
+                  (call-method ,method)
                   ,else)))
 
     (-<> (copy-list methods)
