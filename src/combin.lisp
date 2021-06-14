@@ -575,7 +575,13 @@
                     ,@(when cm-key `(&key ,@(mapcar #'gensym-key cm-key)))
                     &allow-other-keys
                     ,@(when cm-aux `(&aux ,@cm-aux)))
-                 ,*full-arg-list-form*
+                 ,(etypecase args
+                    (null
+                     *full-arg-list-form*)
+
+                    (cons `(list ,@args))
+
+                    (symbol args))
 
                (declare (ignorable ,@required-extra ,@optional-extra))
 
