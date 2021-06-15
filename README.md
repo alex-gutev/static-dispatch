@@ -101,7 +101,7 @@ generated.
 ### Prevent Static Dispatching
 
 Static dispatching can be inhibited for a generic function, even when
-the safety level is `3`, by declaring that function `NOTINLINE`.
+the speed level is `3`, by declaring that function `NOTINLINE`.
 
 **Example:**
 
@@ -123,7 +123,7 @@ a `SAFETY`, or `DEBUG` level of `3`.
     (FOO X Y)) ; FOO not statically dispatched
 ```
 
-Static dispatch can also be explicitly disabled with the
+Static dispatching can also be explicitly disabled with the
 `STATIC-DISPATCH-INHIBIT` declaration, which accepts one argument a
 Boolean flag. If the flag is true (`T`) static dispatching is disabled
 entirely for all generic function calls in the environment of the
@@ -235,8 +235,8 @@ used rather than compiler macros.
 By default a style-warning is emitted whenever static-dispatch fails
 for any reason. Static dispatching can fail if the types of the
 arguments cannot be determined, there are no applicable methods, or
-other error conditions such as encountering a malformed form, or
-missing method information due to it not being defined with
+due to other error conditions such as encountering a malformed form,
+or missing method information due to it not being defined with
 `DEFMETHOD` from the `STATIC-DISPATCH` package.
 
 The declaration `STATIC-DISPATCH-WARN` controls for which static
@@ -401,5 +401,3 @@ Walking](https://alex-gutev.github.io/cl-environments/#ensuring_code_walking).
 * Method return type declarations.
 * Enhance generic functions to allow for specialization on all types
   rather than just classes.
-* Debugging options for emitting a warning when a generic function
-  could not be statically dispatched.
