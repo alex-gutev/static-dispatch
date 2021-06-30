@@ -38,7 +38,8 @@
 
 ;;; Method Combinations
 
-(define-method-combination my-list :operator list :identity-with-one-argument t)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-method-combination my-list :operator list :identity-with-one-argument t))
 
 ;;;; Long-form method combination. Taken from generic-cl
 
@@ -53,40 +54,42 @@
 ;; ECL doesn't support the :ARGUMENTS keyword in define-method-combination.
 
 #-ecl
-(define-method-combination subtype ()
-  ((methods * :required t))
-  (:arguments type)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-method-combination subtype ()
+    ((methods * :required t))
+    (:arguments type)
 
-  "Dispatch based on a type keyword given as a qualifier.
+    "Dispatch based on a type keyword given as a qualifier.
 
-   With this method combination each method includes a single
-   qualifier, which is interpreted as a type specifier symbol.
+     With this method combination each method includes a single
+     qualifier, which is interpreted as a type specifier symbol.
 
-   The method of which the value given in the first argument,
-   interpreted as a type specifier, is a subtype of the method's
-   qualified type specifier, given in the first qualifier, is called.
+     The method of which the value given in the first argument,
+     interpreted as a type specifier, is a subtype of the method's
+     qualified type specifier, given in the first qualifier, is
+     called.
 
-   The methods are ordered such that the methods qualified with the
-   most derived type, i.e. a type which is a subtype of the others,
-   are called first."
+     The methods are ordered such that the methods qualified with the
+     most derived type, i.e. a type which is a subtype of the others,
+     are called first."
 
-  (labels ((type-qualifier (method)
-             (first (method-qualifiers method)))
+    (labels ((type-qualifier (method)
+               (first (method-qualifiers method)))
 
-           (type< (t1 t2)
-             (subtypep t1 t2))
+             (type< (t1 t2)
+               (subtypep t1 t2))
 
-           (make-if (method else)
-             `(if (subtypep ,type ',(type-qualifier method))
-                  (call-method ,method)
-                  ,else)))
+             (make-if (method else)
+               `(if (subtypep ,type ',(type-qualifier method))
+                    (call-method ,method)
+                    ,else)))
 
-    (-<> (copy-list methods)
-         (stable-sort #'type< :key #'type-qualifier)
-         (reduce #'make-if <>
-                 :from-end t
-                 :initial-value
-                 `(error 'no-method-for-type :type ,type)))))
+      (-<> (copy-list methods)
+           (stable-sort #'type< :key #'type-qualifier)
+           (reduce #'make-if <>
+                   :from-end t
+                   :initial-value
+                   `(error 'no-method-for-type :type ,type))))))
 
 
 ;;; Generic function with a standard method combination
