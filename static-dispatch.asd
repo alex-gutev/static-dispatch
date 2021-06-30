@@ -27,7 +27,7 @@
   :description "Static generic function dispatch for Common Lisp."
   :author "Alexander Gutev"
   :license "MIT"
-  :version "0.8"
+  :version "0.8.1"
   :serial t
   :components ((:module
 		"src"
