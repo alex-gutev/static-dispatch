@@ -208,38 +208,40 @@
         (combination-options))
 
     (with-gensyms (gf method)
-      (progn
-        `(let ((,gf
-                (walk-environment
-                  (c2mop:defgeneric ,name ,lambda-list ,@options))))
+      `(progn
+         (walk-environment
+           (c2mop:defgeneric ,name ,lambda-list ,@options))
 
+         (eval-when (:compile-toplevel :load-toplevel :execute)
            (add-compiler-macro ',name)
-           (remove-defined-methods ',name)
+           (remove-defined-methods ',name))
 
-           ,@(handler-case
-                 (append
-                  (mappend
-                   (lambda-match
-                     ((list* :method args)
-                      (multiple-value-bind (qualifiers specializers lambda-list body)
-                          (parse-method args)
+         (let ((,gf (fdefinition ',name)))
+           (when (typep ,gf 'generic-function)
+             ,@(handler-case
+                   (append
+                    (mappend
+                     (lambda-match
+                       ((list* :method args)
+                        (multiple-value-bind (qualifiers specializers lambda-list body)
+                            (parse-method args)
 
-                        (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
-                                 ,(make-add-method-info name method body :remove-on-redefine-p t))
+                          (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
+                                   ,(make-add-method-info name method body :remove-on-redefine-p t))
 
-                              (make-static-dispatch name lambda-list specializers))))
+                                (make-static-dispatch name lambda-list specializers))))
 
-                     ((list* :method-combination name options)
-                      (setf combination name)
-                      (setf combination-options options)))
+                       ((list* :method-combination name options)
+                        (setf combination name)
+                        (setf combination-options options)))
 
-                   options)
+                     options)
 
-                  `((setf (combination-options ',name)
-                          '(,combination ,combination-options))))
+                    `((setf (combination-options ',name)
+                            '(,combination ,combination-options))))
 
-               (error (e)
-                 (simple-style-warning "Error parsing DEFGENERIC form:~%~a" e)))
+                 (error (e)
+                   (simple-style-warning "Error parsing DEFGENERIC form:~%~a" e))))
 
            ,gf)))))
 
