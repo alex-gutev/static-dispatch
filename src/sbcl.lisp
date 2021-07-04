@@ -242,7 +242,7 @@
 
           (when (should-apply? methods type-list)
             (if methods
-                (inline-call gf methods args types (sb-c:policy node (> safety 0)))
+                (inline-call gf methods args types (sb-c:policy node (> safety 0)) (sb-c:policy node (= space 3)))
                 (error "No applicable methods for argument types: ~s" types)))))
 
     (combin-destructure-args-error (e)

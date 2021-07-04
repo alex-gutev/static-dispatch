@@ -89,5 +89,5 @@
          (methods (compute-applicable-methods% gf-name types)))
 
     (if methods
-        (inline-call gf methods args types (should-check-types? env))
+        (inline-call gf methods args types (should-check-types? env) (should-call-fn? env))
         (error "No applicable methods for argument types: ~s" types))))

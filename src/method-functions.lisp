@@ -27,107 +27,42 @@
 
 (in-package #:static-dispatch)
 
-(defun make-static-overload-functions (gf-name)
-  "Generate the forms which define the method functions of a generic function.
-
-   Also generates function names for the methods and returns forms
-   which set those names in *METHOD-FUNCTIONS*. Thus this function
-   should be wrapped in a binding of a copy of *METHOD-FUNCTIONS*, in
-   order to prevent it's value from being modified merely by
-   macroexpansion.
-
-   GF-NAME is the name of the generic function.
-
-   Returns a list of forms which define the functions that implement
-   the methods."
-
-  `((eval-when (:compile-toplevel :load-toplevel :execute)
-      ,@(method-function-names gf-name))
-
-    ,@(when-let (methods (gf-methods gf-name))
-	(let ((*current-gf* gf-name))
-	  (loop
-	     for method being the hash-value of methods
-	     for fn = (make-method-function gf-name method)
-	     when fn collect fn)))))
-
-(defun make-remove-method-function-names (gf-name)
-  "Create forms which remove all function names from *METHOD-FUNCTIONS* for a generic function.
-
-   GF-NAME is the generic function name.
-
-   Returns a form which removes all method function names for the
-   given generic function."
-
-  (when-let (methods (gf-methods gf-name))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       ,@(loop for spec being the hash-key of methods
-	  collect `(remhash ',(cons gf-name spec) *method-functions*)))))
-
-(defun method-function-names (gf-name)
-  "Generate function names for each generic function method.
-
-   Modifies *METHOD-FUNCTIONS*.
-
-   GF-NAME is the generic function name.
-
-   Returns a list of forms which store the generated names in
-   *METHOD-FUNCTIONS*."
-
-  (when-let (methods (gf-methods gf-name))
-    (loop
-       for spec being the hash-key of methods
-       collect
-	 `(setf (gethash '(,gf-name . ,spec) *method-functions*)
-		',(method-function-name gf-name spec)))))
-
-(defun method-function-name (gf-name method &optional (generate t))
-  "Return the function name for a generic function method.
-
-   GF-NAME is the generic function name.
-
-   METHOD is the method specifier (QUALIFIER SPECIALIZERS).
-
-   GENERATE is a flag which if true, results in a new name being
-   generated and stored in *METHOD-FUNCTIONS*.
-
-   Returns the function name."
-
-  (if generate
-      (ensure-gethash
-       (cons gf-name method) *method-functions*
-       (gentemp (symbol-name (block-name gf-name)) *method-function-package*))
-
-      (gethash (cons gf-name method) *method-functions*)))
-
-(defun make-method-function (gf-name method)
+(defun make-method-function (gf-name name lambda-list body)
   "Generate a DEFUN form implementing a generic function method.
 
    GF-NAME is the name of the generic function.
 
-   METHOD is the `METHOD-INFO' object containing the method details.
+   NAME is the name of the function to generate.
 
-   Returns a DEFUN form for the method."
+   LAMBDA-LIST is the ordinary function's lambda-list.
 
-  (with-slots (lambda-list) method
-    (let ((name (method-function-name gf-name (method-spec method))))
-      (with-gensyms (call-next-method next-method-p next-arg-var)
+   BODY is the body implementing the method.
 
-	(multiple-value-bind (lambda-list *full-arg-list-form* ignore)
-	    (lambda-list->arg-list-form lambda-list)
+   Returns a DEFUN form for the method function."
 
-	  `(defun ,name (,call-next-method ,next-method-p ,@lambda-list)
-	     (declare (ignorable ,call-next-method ,next-method-p ,@ignore))
-	     (static-method-function-test-hook)
+  (with-gensyms (call-next-method next-method-p next-arg-var)
+    (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
+	(lambda-list->arg-list-form lambda-list)
 
-	     (flet ((call-next-method (&rest ,next-arg-var)
-		      (apply ,call-next-method ,next-arg-var))
+      (multiple-value-bind (forms declarations docstring)
+          (parse-body body :documentation t)
 
-		    (next-method-p ()
-		      ,next-method-p))
-	       (declare (ignorable #'call-next-method #'next-method-p))
+        `(defun ,name (,call-next-method ,next-method-p ,@lambda-list)
+	   (declare (ignorable ,call-next-method ,next-method-p ,@ignore))
+           ,@declarations
+           ,@(ensure-list docstring)
 
-	       ,(make-inline-method-body method nil nil t))))))))
+	   (static-method-function-test-hook)
+
+	   (flet ((call-next-method (&rest ,next-arg-var)
+		    (apply ,call-next-method ,next-arg-var))
+
+		  (next-method-p ()
+		    ,next-method-p))
+	     (declare (ignorable #'call-next-method #'next-method-p))
+
+	     (block ,(block-name gf-name)
+               ,@forms)))))))
 
 (defun lambda-list->arg-list-form (lambda-list)
   "Construct a form which recreates an argument list from a lambda-list.

@@ -52,6 +52,12 @@
     :documentation
     "The method's specializers")
 
+   (function-name
+    :initarg :function-name
+    :accessor function-name
+    :documentation
+    "The name of the ordinary function implementing the method.")
+
    (remove-on-redefine-p
     :initarg :remove-on-redefine-p
     :accessor remove-on-redefine-p
@@ -73,13 +79,6 @@
 (defvar *method-function-package* (make-package 'static-dispatch.method-functions)
   "Package into which statically dispatched method function names are
    interned.")
-
-(defvar *method-functions* (make-hash-table :test #'equal)
-  "Hash table mapping methods to the function implementing that method.
-
-   Each key is of the form (NAME QUALIFIERS SPECIALIZERS) where NAME
-   is the name of the generic function, QUALIFIERS is the method
-   qualifier list and SPECIALIZERS is the argument specializer list.")
 
 (defun gf-methods (gf-name)
   "Returns the method information for the generic function GF-NAME. A
@@ -108,12 +107,13 @@
   (setf (gethash spec (ensure-gf-methods gf-name))
         value))
 
-(defun ensure-method-info (gf-name qualifiers specializers &key body lambda-list remove-on-redefine-p)
+(defun ensure-method-info (gf-name qualifiers specializers &key function-name body lambda-list remove-on-redefine-p)
   "Ensures that the method table, within *GENERIC-FUNCTION-TABLE*, of
    the generic function GF-NAME contains a method with qualifiers
-   QUALIFIERS, specializers SPECIALIZERS, lambda-list LAMBDA-LIST and
-   body BODY. If the table does not contain a method for those
-   specializers, a new `METHOD-INFO' object is created."
+   QUALIFIERS, specializers SPECIALIZERS, lambda-list LAMBDA-LIST,
+   static method function-name FUNCTION-NAME, and body BODY. If the
+   table does not contain a method for those specializers, a new
+   `METHOD-INFO' object is created."
 
   (aprog1
       (ensure-gethash
@@ -122,6 +122,7 @@
        (make-instance 'method-info
                       :specializers specializers
                       :qualifiers qualifiers
+                      :function-name function-name
                       :remove-on-redefine-p remove-on-redefine-p))
 
     (setf (lambda-list it) lambda-list)
@@ -182,75 +183,91 @@
 ;;; DEFMETHOD and DEFGENERIC Macros
 
 (defmacro defmethod (name &rest args)
-  (with-gensyms (method)
-    `(let ((,method
-            (walk-environment
-              (c2mop:defmethod ,name ,@args))))
+  (handler-case
+      (multiple-value-bind (qualifiers specializers lambda-list body)
+          (parse-method args)
 
-       ,(handler-case
-            (multiple-value-bind (qualifiers specializers lambda-list body)
-                (parse-method args)
+        (declare (ignore qualifiers))
 
-              (declare (ignore qualifiers))
+        (with-gensyms (method)
+          (let ((fn-name (gentemp (symbol-name (block-name name)) *method-function-package*)))
+            `(progn
+               ,(make-method-function name fn-name lambda-list body)
 
-              `(when (combination-options ',name)
-                 (progn
-                   ,(make-add-method-info name method body)
-                   ,(make-static-dispatch name lambda-list specializers))))
+               (let ((,method
+                      (walk-environment
+                        (c2mop:defmethod ,name ,@args))))
 
-          (error (e)
-            (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~a" e)))
+                 (when (combination-options ',name)
+                   ,(make-add-method-info name method fn-name body)
+                   ,(make-static-dispatch name lambda-list specializers))
 
-       ,method)))
+                 ,method)))))
+
+    (error (e)
+      (simple-style-warning "Error parsing DEFMETHOD form:~%~2T~a" e)
+      `(walk-environment
+         (c2mop:defmethod ,name ,@args)))))
 
 (defmacro defgeneric (name (&rest lambda-list) &rest options)
-  (let ((combination 'standard)
-        (combination-options))
+  (with-gensyms (gf)
+    (flet ((make-save-method (args)
+             (with-gensyms (method)
+               (multiple-value-bind (qualifiers specializers lambda-list body)
+                   (parse-method args)
 
-    (with-gensyms (gf method)
-      `(progn
-         (walk-environment
-           (c2mop:defgeneric ,name ,lambda-list ,@options))
+                 (let ((fn-name (gentemp (symbol-name (block-name name)) *method-function-package*)))
+                   (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
+                            ,(make-add-method-info name method fn-name body :remove-on-redefine-p t))
 
-         (eval-when (:compile-toplevel :load-toplevel :execute)
-           (add-compiler-macro ',name)
-           (remove-defined-methods ',name))
+                         (make-method-function name fn-name lambda-list body)
 
-         (let ((,gf (fdefinition ',name)))
-           (when (typep ,gf 'generic-function)
-             ,@(handler-case
-                   (append
-                    (mappend
-                     (lambda-match
-                       ((list* :method args)
-                        (multiple-value-bind (qualifiers specializers lambda-list body)
-                            (parse-method args)
+                         (make-static-dispatch name lambda-list specializers)))))))
 
-                          (list `(let ((,method (find-method% ,gf ',qualifiers ',specializers)))
-                                   ,(make-add-method-info name method body :remove-on-redefine-p t))
+      (let ((combination 'standard)
+            (combination-options))
 
-                                (make-static-dispatch name lambda-list specializers))))
+        `(progn
+           (walk-environment
+             (c2mop:defgeneric ,name ,lambda-list ,@options))
 
-                       ((list* :method-combination name options)
-                        (setf combination name)
-                        (setf combination-options options)))
+           (eval-when (:compile-toplevel :load-toplevel :execute)
+             (add-compiler-macro ',name)
+             (remove-defined-methods ',name))
 
-                     options)
+           (let ((,gf (fdefinition ',name)))
+             (when (typep ,gf 'generic-function)
+               ,@(handler-case
+                     (append
+                      (mappend
+                       (lambda-match
+                         ((list* :method args)
+                          (make-save-method args))
 
-                    `((setf (combination-options ',name)
-                            '(,combination ,combination-options))))
+                         ((list* :method-combination name options)
+                          (setf combination name)
+                          (setf combination-options options)))
 
-                 (error (e)
-                   (simple-style-warning "Error parsing DEFGENERIC form:~%~a" e))))
+                       options)
 
-           ,gf)))))
+                      `((setf (combination-options ',name)
+                              '(,combination ,combination-options))))
 
-(defun make-add-method-info (name method body &key remove-on-redefine-p)
+                   (error (e)
+                     (simple-style-warning "Error parsing DEFGENERIC form:~%~a" e)
+                     nil)))
+
+             ,gf))))))
+
+(defun make-add-method-info (name method fn-name body &key remove-on-redefine-p)
   "Create a form which adds the method information to the method table.
 
    NAME is the name of the generic function.
 
    METHOD is a variable storing the method object.
+
+   FN-NAME is the name of the ordinary function which implements the
+   method.
 
    BODY is the method body.
 
@@ -263,6 +280,7 @@
     (mapcar #'specializer->cl (method-specializers ,method))
     :body ',body
     :lambda-list (method-lambda-list ,method)
+    :function-name ',fn-name
     :remove-on-redefine-p ,remove-on-redefine-p))
 
 (defun add-compiler-macro (name)
@@ -520,6 +538,17 @@
          (safety (or (second (assoc 'safety optimize)) 1)))
     (plusp safety)))
 
+(defun should-call-fn? (env)
+  "Returns true if a call to the ordinary function, implementing the
+   method, should be emitted rather than inlining the method body.
+
+   Function calls are emitted when there is a SPACE optimize quality
+   equal to 3 in the environment ENV."
+
+  (let* ((optimize (declaration-information 'optimize env))
+         (space (or (second (assoc 'space optimize)) 1)))
+    (= space 3)))
+
 
 ;;; Inlining
 
@@ -539,7 +568,7 @@
 
   body)
 
-(defun inline-call (gf methods args types check-types)
+(defun inline-call (gf methods args types check-types &optional call-fn)
   "Inline a call to a generic-function with a given list of methods.
 
    GF is the generic-function object, of the generic-function call to
@@ -550,7 +579,10 @@
    TYPES is the list of the types of the arguments.
 
    CHECK-TYPES is a flag for whether, if true, type checks should be
-   inserted in the CALL-NEXT-METHOD local function definitions."
+   inserted in the CALL-NEXT-METHOD local function definitions.
+
+   CALL-FN is a flag for whether, if true, ordinary method function
+   calls should be emitted rather than inlining the method body."
 
   (multiple-value-bind (bindings args declarations)
       (make-argument-bindings args types)
@@ -567,6 +599,7 @@
          (compute-effective-method% gf methods args)
 
          :types types
+         :call-fn call-fn
          :check-types check-types))))
 
 (defun make-argument-bindings (args types)
@@ -608,7 +641,7 @@
 
        (finally (return (values bindings arg-list declarations)))))))
 
-(defun wrap-in-macros (name args form &key types check-types)
+(defun wrap-in-macros (name args form &key call-fn types check-types)
   "Wrap a form in the lexical CALL-METHOD and MAKE-METHOD macros.
 
    NAME is the name of the generic-function being statically
@@ -620,6 +653,9 @@
    FORM is the form which should be inserted in the body of the
    MACROLET.
 
+   CALL-FN is a flag for whether, if true, ordinary method function
+   calls should be emitted rather than inlining the method body.
+
    TYPES is the argument type list.
 
    CHECK-TYPES is a flag for whether type checks should be inserted in
@@ -630,7 +666,8 @@
   (with-gensyms (method next expandedp env)
     `(macrolet ((call-method (,method &optional ,next &environment ,env)
                   (let ((*current-gf* ',name)
-                        (*full-arg-list-form* ',*full-arg-list-form*))
+                        (*full-arg-list-form* ',*full-arg-list-form*)
+                        (*call-args* ',*call-args*))
 
                     (when (consp ,method)
                       (multiple-value-bind (,method ,expandedp)
@@ -647,6 +684,7 @@
                         ',args
                         ,next
                         :types ',types
+                        :call-fn ',call-fn
                         :check-types ',check-types))
 
                       (temp-method
@@ -657,7 +695,7 @@
 
        ,form)))
 
-(defun inline-method-form (name method args next-methods &key types check-types)
+(defun inline-method-form (name method args next-methods &key call-fn types check-types)
   "Inline a method with the definitions of the CALL-NEXT-METHOD and NEXT-METHOD-P functions.
 
    NAME is the name of the generic-function.
@@ -667,6 +705,9 @@
    ARGS is the specifier for the arguments to the generic-function call.
 
    NEXT-METHODS is the list of the next method objects.
+
+   CALL-FN is a flag for whether, if true, ordinary method function
+   calls should be emitted rather than inlining the method body.
 
    TYPES is the argument type list.
 
@@ -695,9 +736,9 @@
 
          (declare (ignorable #'call-next-method #'next-method-p))
          ,(let ((info (info-for-method name method)))
-            (if-let (fn (method-function-name name info nil))
-              (make-method-function-call fn args `(#'call-next-method ,(and next-method t)))
-              (make-inline-method-body info args types check-types)))))))
+            (if call-fn
+                (make-method-function-call (function-name info) args `(#'call-next-method ,(and next-method t)))
+                (make-inline-method-body info args types check-types)))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
