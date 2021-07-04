@@ -53,22 +53,38 @@
 
 (defvar *static-dispatch*)
 
+(defvar *called-static-function*)
+
 (defmacro static-dispatch::static-dispatch-test-hook ()
   '(setf *static-dispatch* t))
 
-(defmacro test-dispatch (call result &key (test-dispatch t) (static-p t))
-  `(let ((*static-dispatch* nil))
+(defmacro static-dispatch::static-method-function-test-hook ()
+  '(setf *called-static-function* t))
+
+(defmacro test-dispatch (call result &key static-function (test-dispatch t) (static-p t))
+  `(let ((*static-dispatch* nil)
+         (*called-static-function* nil))
      (is
       (equal
        ,result
        (suppress-output ,call)))
 
      ,(when test-dispatch
-	`(,(if static-p 'is-true 'is-false)
-	   *static-dispatch*
-	   ,(format nil "~s was not ~a dispatched"
-		    call
-		    (if static-p "statically" "dynamically"))))))
+	`(progn
+           (,(if static-p 'is-true 'is-false)
+	    *static-dispatch*
+	    ,(format nil "~s was not ~a dispatched"
+		     call
+		     (if static-p "statically" "dynamically")))
+
+           ,(if static-function
+               `(is-true
+                 *called-static-function*
+                 ,(format nil "~s was not replaced with function call" call))
+
+               `(is-false
+                 *called-static-function*
+                 ,(format nil "~s was not replaced with inline method body" call)))))))
 
 (defmacro suppress-output (&body forms)
   `(with-open-stream (*standard-output* (make-broadcast-stream))

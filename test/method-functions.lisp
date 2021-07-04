@@ -62,15 +62,6 @@
 
 ;;; Tests
 
-;; Enable static dispatch with overloading rather than inlining
-
-(enable-static-dispatch
- (:function foo)
- (:function my-eq)
- (:function foo2)
- (:function bar)
- (:function baz))
-
 ;; Inhibit notes on SBCL
 #+sbcl (declaim (optimize sb-ext:inhibit-warnings))
 
@@ -79,36 +70,46 @@
 
   (let ((x-int 5) (y-int 10))
     (declare (type integer x-int y-int)
-	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
      (foo 1 2)
-     '(integer t (number t (2 3))))
+     '(integer t (number t (2 3)))
+
+     :static-function t)
 
     (test-dispatch
      (foo x-int y-int)
-     '(integer t (number t (6 11))))
+     '(integer t (number t (6 11)))
+
+     :static-function t)
 
     (test-dispatch
      (foo a-number +a-constant+)
-     '(integer t (number t (3 11))))))
+     '(integer t (number t (3 11)))
+
+     :static-function t)))
 
 (test (dispatch-float-arguments :compile-at :run-time)
   "Test CALL-NEXT-METHOD without arguments"
 
   (let ((x 0.5) (y 2.5))
     (declare (type float x y)
-	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
      (foo (pass-through 1.5) 3.125)
-     '(float t (number t (1.5 3.125))))
+     '(float t (number t (1.5 3.125)))
+
+     :static-function t)
 
     (test-dispatch
      (foo x y)
-     '(float t (number t (0.5 2.5))))))
+     '(float t (number t (0.5 2.5)))
+
+     :static-function t)))
 
 (test (dispatch-number-arguments :compile-at :run-time)
   "Test NEXT-METHOD-P with next method"
@@ -116,45 +117,59 @@
   (let ((x 1) (y 3/2))
     (declare (type integer x)
 	     (type number y)
-	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
      (foo 1 5/6)
-     '(number t (1 5/6)))
+     '(number t (1 5/6))
+
+     :static-function t)
 
     (test-dispatch
      (foo x y)
-     '(number t (1 3/2)))))
+     '(number t (1 3/2))
+
+     :static-function t)))
 
 (test (dispatch-string-arguments :compile-at :run-time)
   "Test NEXT-METHOD-P with next method."
 
   (let ((hello "hello"))
     (declare (type string hello)
-	     (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
+	     (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings)
 	     (inline foo))
 
     (test-dispatch
      (foo hello "world")
-     '(string t ("hello" "world")))
+     '(string t ("hello" "world"))
+
+     :static-function t)
 
     (test-dispatch
      (foo (pass-through "hello") "bye")
-     '(string t ("hello" "bye")))))
+     '(string t ("hello" "bye"))
+
+     :static-function t)))
 
 (test (dispatch-other-arguments :compile-at :run-time)
   "Test NEXT-METHOD-P with no next method"
 
   (locally (declare (inline foo)
-		    (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+		    (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
-    (test-dispatch (foo 'x 0) '(other nil (x 0)))
+    (test-dispatch (foo 'x 0) '(other nil (x 0))
+                   :static-function t)
+
     (test-dispatch (foo (pass-through "hello") +a-constant+)
-		   (list 'other nil (list "hello" +a-constant+)))
+		   (list 'other nil (list "hello" +a-constant+))
+
+                   :static-function t)
 
     (test-dispatch (foo 'x 'y :default-type 'default)
-		   (list 'default nil (list 'x 'y)))))
+		   (list 'default nil (list 'x 'y))
+
+                   :static-function t)))
 
 
 ;;; Test Auxiliary methods
@@ -163,18 +178,18 @@
   "Test static dispatching of :AROUND methods"
 
   (locally (declare (inline my-eq)
-		    (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+		    (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
-    (test-dispatch (my-eq 1/2 0.5) '(:around-number t))
-    (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)))
-    (test-dispatch (my-eq "x" 'x) nil)
-    (test-dispatch (my-eq 133 133) :special-number)))
+    (test-dispatch (my-eq 1/2 0.5) '(:around-number t) :static-function t)
+    (test-dispatch (my-eq 1 2) '(:around-integer (:around-number nil)) :static-function t)
+    (test-dispatch (my-eq "x" 'x) nil :static-function t)
+    (test-dispatch (my-eq 133 133) :special-number :static-function t)))
 
 (test (before-after-methods :compile-at :run-time)
   "Test static dispatching of :BEFORE and :AFTER methods"
 
   (locally (declare (inline my-eq)
-		    (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+		    (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
 
     (is-print (my-eq 1/2 2/3) "Before Numbers: 1/2 = 2/3. After Numbers: 1/2 = 2/3. ")
     (is-print (my-eq 1 2) "Before Integer: 1 = 2. Before Numbers: 1 = 2. After Numbers: 1 = 2. After Integer: 1 = 2. ")
@@ -186,7 +201,7 @@
 (test (before-method-without-primary :compile-at :run-time)
   "Test static dispatching of :BEFORE method without primary method"
 
-  (locally (declare (inline foo2) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline foo2) (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (declare (static-dispatch-warn none))
 
     (is-print
@@ -199,7 +214,7 @@
 (test (after-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AFTER method without primary method"
 
-  (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline bar) (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (declare (static-dispatch-warn none))
 
     (is-print
@@ -212,7 +227,7 @@
 (test (around-method-without-primary :compile-at :run-time)
   "Test static dispatching of :AROUND method without primary method"
 
-  (locally (declare (inline bar) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline bar) (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (declare (static-dispatch-warn none))
 
     (test-error (bar "hello") error)
@@ -221,7 +236,7 @@
 (test (before-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :BEFORE method"
 
-  (locally (declare (inline baz) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline baz) (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print (baz 'x) "BAZ Before all: X NIL. ")
 
     (is-print
@@ -235,7 +250,7 @@
 (test (after-method-call-next-method :compile-at :run-time)
   "Test CALL-NEXT-METHOD from :AFTER method"
 
-  (locally (declare (inline baz) (optimize speed (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
+  (locally (declare (inline baz) (optimize speed space (safety 1) (debug 1) #+sbcl sb-ext:inhibit-warnings))
     (is-print (baz #(1 2 3))
 	      "BAZ Before all: #(1 2 3) NIL. BAZ After ARRAY: #(1 2 3) NIL. ")
 
