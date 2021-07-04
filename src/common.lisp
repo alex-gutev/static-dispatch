@@ -538,16 +538,20 @@
          (safety (or (second (assoc 'safety optimize)) 1)))
     (plusp safety)))
 
-(defun should-call-fn? (env)
+(defun should-call-fn? (name env)
   "Returns true if a call to the ordinary function, implementing the
-   method, should be emitted rather than inlining the method body.
+   method for generic-function NAME, should be emitted rather than
+   inlining the method body.
 
    Function calls are emitted when there is a SPACE optimize quality
    equal to 3 in the environment ENV."
 
   (let* ((optimize (declaration-information 'optimize env))
-         (space (or (second (assoc 'space optimize)) 1)))
-    (= space 3)))
+         (space (or (second (assoc 'space optimize)) 1))
+         (type (static-dispatch-type name env)))
+    (or (eq type 'function)
+        (and (not (eq type 'inline))
+             (= space 3)))))
 
 
 ;;; Inlining

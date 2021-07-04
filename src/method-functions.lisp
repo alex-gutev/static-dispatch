@@ -27,6 +27,48 @@
 
 (in-package #:static-dispatch)
 
+;;; Declarations
+
+(define-declaration static-dispatch-type (args)
+  "Configure how a generic-function is statically dispatched in an environment.
+
+   The arguments are of the form:
+
+     (DISPATCH-TYPE . FUNCTIONS)
+
+   DISPATCH-TYPE is one of the following symbols specifying how the
+   generic function is statically dispatched:
+
+     INLINE : The method body is always inlined regardless of the SPACE
+              optimization quality level.
+
+     FUNCTION : A call to the ordinary function implementing the
+                method is always emitted regardless of the
+                optimization quality levels.
+
+     NIL : The default. How the generic function is statically
+           dispatched, depends on the SPACE optimization quality
+           level.
+
+   FUNCTIONS is a list of generic function names, for which the
+   DISPATCH-TYPE applies."
+
+  (destructuring-bind (dispatch-type &rest fns) args
+    (check-type dispatch-type (member inline function nil))
+
+    (values
+     :function
+     (mapcar (rcurry #'list 'dispatch-type dispatch-type) fns))))
+
+(defun static-dispatch-type (fn env)
+  "Return the declared STATIC-DISPATCH-TYPE of the function FN, in
+   environment ENV."
+
+  (cdr (assoc 'dispatch-type (nth-value 2 (function-information fn env)))))
+
+
+;;; Generating Method Functions
+
 (defun make-method-function (gf-name name lambda-list body)
   "Generate a DEFUN form implementing a generic function method.
 
