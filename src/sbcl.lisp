@@ -31,7 +31,7 @@
 ;;; Generating DEFTRANSFORM's
 
 (define-constant +static-dispatch-policy+
-    '(and (= speed 3) (< safety 3) (< debug 3))
+    '(and (= speed 3) (< safety 3) (< debug 3) (< compilation-speed 3))
   :test 'equal
   :documentation
   "Optimization policy at which static dispatching is performed.")

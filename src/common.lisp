@@ -526,6 +526,7 @@
          (speed (or (second (assoc 'speed levels)) 1))
          (safety (or (second (assoc 'safety levels)) 1))
          (debug (or (second (assoc 'debug levels)) 1))
+         (compilation-speed (or (second (assoc 'compilation-speed levels)) 1))
 
          (inhibit (declaration-information 'inhibit env)))
 
@@ -533,6 +534,7 @@
       (and (= speed 3)
            (< safety 3)
            (< debug 3)
+           (< compilation-speed 3)
            (not
             (eq 'notinline
                 (->> (function-information name env)
