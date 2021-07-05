@@ -91,6 +91,20 @@
 
      :static-function t)))
 
+(test (dispatch-type-declaration :compile-at :run-time)
+  "Test STATIC-DISPATCH-TYPE declaration"
+
+  (let ((x 1))
+    (declare (type integer x)
+             (static-dispatch-type function foo)
+             (optimize speed (safety 1) (debug 1) (space 1)))
+
+    (test-dispatch
+     (foo 2 x)
+     '(integer t (number t (3 2)))
+
+     :static-function t)))
+
 (test (dispatch-float-arguments :compile-at :run-time)
   "Test CALL-NEXT-METHOD without arguments"
 
