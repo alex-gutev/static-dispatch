@@ -30,20 +30,6 @@
 
 ;;; Compiler Macro
 
-(defmacro enable-static-dispatch (&rest names)
-  "Enable static dispatching for generic functions with names NAMES."
-
-  (let ((*method-functions* (copy-hash-table *method-functions*)))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       ,@(iter
-	   (for name in names)
-	   (match name
-             ((list :inline name)
-              (collect (make-remove-method-function-names name)))
-
-             ((list :function name)
-              (collect `(progn ,@(make-static-overload-functions name)))))))))
-
 (defun make-static-dispatch (name lambda-list specializers)
   (declare (ignore name lambda-list specializers))
   nil)

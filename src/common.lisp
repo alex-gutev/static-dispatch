@@ -293,6 +293,18 @@
        name)
       (setf (compiler-macro-function name) #'static-dispatch)))
 
+(defmacro enable-static-dispatch (&rest names)
+  (simple-style-warning "ENABLE-STATIC-DISPATCH is deprecated. Use STATIC-DISPATCH-TYPE declaration instead.")
+
+  `(progn
+     ,@(iter (for name in names)
+             (match name
+               ((list :inline name)
+                (collect `(declaim (static-dispatch-type inline ,name))))
+
+               ((list :function name)
+                (collect `(declaim (static-dispatch-type function ,name))))))))
+
 
 ;;; Parsing Method Definitions
 

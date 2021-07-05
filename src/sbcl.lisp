@@ -28,24 +28,6 @@
 (in-package :static-dispatch)
 
 
-;;; Compiler Transform
-
-(defmacro enable-static-dispatch (&rest names)
-  "Enable static dispatching for generic functions with names NAMES."
-
-  (let ((*method-functions* (copy-hash-table *method-functions*)))
-    `(progn ,@(mapcar #'make-enable-static-dispatch names))))
-
-(defun make-enable-static-dispatch (name)
-  (match name
-    ((list :inline name)
-     (make-remove-method-function-names name))
-
-    ((list :function name)
-     `(progn
-        ,@(make-static-overload-functions name)))))
-
-
 ;;; Generating DEFTRANSFORM's
 
 (define-constant +static-dispatch-policy+
