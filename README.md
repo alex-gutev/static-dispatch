@@ -66,37 +66,54 @@ package as well as the symbols in the `STATIC-DISPATCH` package,
 including the shadowed `DEFMETHOD` and `DEFGENERIC` macros. Use this
 package instead of `CL`.
 
+**NOTE:** Static dispatching is inhibited when an `OPTIMIZE`
+declaration with either a `SAFETY`, `DEBUG` or `COMPILATION-SPEED`
+level of 3, is in place.
+
 ### Overloading
 
 Static-dispatch also supports replacing a generic function call with a
 call to an ordinary function that implements the method, rather than
-inlining the method body. This is achieved using the
-`ENABLE-STATIC-DISPATCH` macro which configures how static dispatch is
-performed, whether inline or by calling the method function, for a
-generic function.
+inlining the method body.
+
+This is done when there is an `OPTIMIZE` declaration with a `SPACE`
+level of 3.
 
 ```lisp
-(enable-static-dispatch &rest names)
+(locally (declare (optimize (speed 3) (space 3)))
+  (foo 1) ;; FOO statically dispatch and method function called
 ```
 
-Each item in `names` indicates a generic function and how it is to be
-dispatched. It may take of one of the following forms:
+Alternatively the `STATIC-DISPATCH-TYPE` declaration can be used to
+configure how a single function is statically dispatched.
 
-* `(:INLINE name)` - Calls to `name` are replaced with the body of the
-  most applicable method(s) inline.
+#### STATIC-DISPATCH-TYPE
 
-* `(:FUNCTION name)` - Calls to `name` are replaced with a call to an
-  ordinary function which implements the most applicable method.
+Declaration: `STATIC-DISPATCH-TYPE TYPE . FNS`
 
-**NOTE:** The `:FUNCTION` static dispatching mode is most useful, when
-you have large methods and you want true overloading, as is found in
-languages such as Java and C++. The `:INLINE` mode will likely result
-in faster, however also larger code.
+`TYPE` is the dispatch type, which can either be one of the following:
 
-**NOTE:** Information about the generic function's methods must be
-available at the time the `ENABLE-STATIC-DISPATCH` macro is expanded,
-as only functions for those methods that are known will be
-generated.
+* `INLINE` - The generic function is always inlined, regardless of
+  `SPACE` optimizations.
+  
+* `FUNCTION` - The generic function call is always replaced with a
+  method function call, regardless of `SPACE` optimizations.
+  
+`FNS` is the list of functions to which this dispatch type applies.
+
+```lisp
+(locally (declare (optimize (speed 3)) (dispatch-type function foo bar))
+  ;; The following generic-function calls are replaced with method
+  ;; function calls
+  
+  (foo 1)
+  (bar 2))
+```
+
+**NOTE:** The `FUNCTION` dispatch type is most useful, when you have
+large methods and you want true overloading, as is found in languages
+such as Java and C++. The `INLINE` type will likely result in faster,
+however also larger code.
 
 ### Prevent Static Dispatching
 
