@@ -169,4 +169,4 @@
 	    (values
 	     lambda-list
 	     (make-required required)
-	     sp-vars)))))))
+	     (append sp-vars required))))))))
