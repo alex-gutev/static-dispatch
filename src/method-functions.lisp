@@ -83,14 +83,12 @@
    Returns a DEFUN form for the method function."
 
   (with-gensyms (call-next-method next-method-p next-arg-var)
-    (multiple-value-bind (lambda-list *full-arg-list-form* ignore)
-	(lambda-list->arg-list-form lambda-list)
-
+    (let ((required (parse-ordinary-lambda-list lambda-list)))
       (multiple-value-bind (forms declarations docstring)
           (parse-body body :documentation t)
 
         `(defun ,name (,call-next-method ,next-method-p ,@lambda-list)
-	   (declare (ignorable ,call-next-method ,next-method-p ,@ignore))
+	   (declare (ignorable ,call-next-method ,next-method-p ,@required))
            ,@declarations
            ,@(ensure-list docstring)
 
@@ -105,68 +103,3 @@
 
 	     (block ,(block-name gf-name)
                ,@forms)))))))
-
-(defun lambda-list->arg-list-form (lambda-list)
-  "Construct a form which recreates an argument list from a lambda-list.
-
-   LAMBDA-LIST is an ordinary lambda-list
-
-   Returns three values:
-
-     1. The new lambda-list with supplied-p variables added where
-        necessary.
-
-     2. The form which recreates the argument list.
-
-     3. A list of variables which should be declared IGNORABLE."
-
-  (let (sp-vars)
-    (labels ((add-sp (spec)
-	       (ematch spec
-		 ((list var init nil)
-		  (let ((sp (gensym)))
-		    (push sp sp-vars)
-		    (list var init sp)))
-
-		 ((list var init sp)
-		  (list var init sp)))))
-
-      (multiple-value-bind (required optional rest key allow-other-keys aux keyp)
-	  (parse-ordinary-lambda-list lambda-list)
-
-	(let* ((optional (mapcar #'add-sp optional))
-	       (rest (or rest (if allow-other-keys (gensym "REST"))))
-	       (key (mapcar #'add-sp key))
-	       (lambda-list
-		(unparse-lambda-list required optional rest key allow-other-keys aux keyp)))
-
-	  (labels ((make-required (required)
-		     (ematch required
-		       ((list* var rest)
-			`(cons ,var ,(make-required rest)))
-
-		       (nil
-			(make-optional optional))))
-
-		   (make-optional (optional)
-		     (ematch optional
-		       ((list* (list var _ sp) rest)
-			`(if ,sp (cons ,var ,(make-optional rest))))
-
-		       (nil
-			(make-rest rest))))
-
-		   (make-rest (rest)
-		     (or rest (make-key key)))
-
-		   (make-key (key)
-		     (ematch key
-		       ((list* (list (list keyword var) _ sp) rest)
-			`(if ,sp (list* ',keyword ,var ,(make-key rest))))
-
-		       (nil nil))))
-
-	    (values
-	     lambda-list
-	     (make-required required)
-	     (append sp-vars required))))))))
