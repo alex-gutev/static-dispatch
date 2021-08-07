@@ -737,26 +737,35 @@
 
   (destructuring-bind (&optional next-method &rest more-methods) next-methods
     (with-gensyms (next-arg-var next-args)
-      `(flet ((call-next-method (&rest ,next-arg-var)
-                (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
-                  (declare (ignorable ,next-args))
+      (let ((specializers (->> (method-specializers method)
+                               (mapcar #'specializer->cl)))
+            (qualifiers (method-qualifiers method)))
 
-                  ,(if next-method
-                       (wrap-in-macros
-                        name
-                        next-args
-                        `(call-method ,next-method ,more-methods)
-                        :check-types check-types)
-                       `(apply #'no-next-method (fdefinition ',name) ,method ,next-args))))
+       `(flet ((call-next-method (&rest ,next-arg-var)
+                 (let ((,next-args (or ,next-arg-var ,(next-method-default-args args))))
+                   (declare (ignorable ,next-args))
 
-              (next-method-p ()
-                ,(and next-method t)))
+                   ,(if next-method
+                        (wrap-in-macros
+                         name
+                         next-args
+                         `(call-method ,next-method ,more-methods)
+                         :check-types check-types)
+                        `(apply #'no-next-method
+                                (fdefinition ',name)
+                                (find-method% (fdefinition ',name)
+                                              ',specializers
+                                              ',qualifiers)
+                                ,next-args))))
 
-         (declare (ignorable #'call-next-method #'next-method-p))
-         ,(let ((info (info-for-method name method)))
-            (if call-fn
-                (make-method-function-call (function-name info) args `(#'call-next-method ,(and next-method t)))
-                (make-inline-method-body info args types check-types)))))))
+               (next-method-p ()
+                 ,(and next-method t)))
+
+          (declare (ignorable #'call-next-method #'next-method-p))
+          ,(let ((info (info-for-method name method)))
+             (if call-fn
+                 (make-method-function-call (function-name info) args `(#'call-next-method ,(and next-method t)))
+                 (make-inline-method-body info args types check-types))))))))
 
 (defun make-inline-method-body (method args types check-types)
   "Returns the inline method body (without the CALL-NEXT-METHOD and
