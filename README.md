@@ -102,7 +102,7 @@ Declaration: `STATIC-DISPATCH-TYPE TYPE . FNS`
 `FNS` is the list of functions to which this dispatch type applies.
 
 ```lisp
-(locally (declare (optimize (speed 3)) (dispatch-type function foo bar))
+(locally (declare (optimize (speed 3)) (static-dispatch-type function foo bar))
   ;; The following generic-function calls are replaced with method
   ;; function calls
   
