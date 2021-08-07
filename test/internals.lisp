@@ -680,7 +680,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list g1 g2))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition 'my-equal) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition 'my-equal)
+                        (find-method%
+                         (fdefinition 'my-equal)
+                         'nil
+                         '(t t))
+                        $next)))
 
 	     (next-method-p () nil))
         (declare (ignorable #'call-next-method #'next-method-p))
@@ -706,7 +712,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args next-args)))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition 'my-equal) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition 'my-equal)
+                        (find-method%
+                         (fdefinition 'my-equal)
+                         'nil
+                         '(t t))
+                        $next)))
 
 	     (next-method-p () nil))
         (declare (ignorable #'call-next-method #'next-method-p))
@@ -769,7 +781,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a b 3))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(t t))
+                        $next)))
 
 	     (next-method-p () nil))
         (declare (ignorable #'call-next-method #'next-method-p))
@@ -824,7 +842,13 @@
      `(flet ((call-next-method (&rest $args)
               (let (($next (or $args (list g1 g2 g3))))
         	(declare (ignorable $next))
-        	(apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+        	(apply #'no-next-method
+                       (fdefinition ',*current-gf*)
+                       (find-method%
+                        (fdefinition ',*current-gf*)
+                        'nil
+                        '(string))
+                       $next)))
 
              (next-method-p () nil))
 
@@ -883,7 +907,13 @@
      `(flet ((call-next-method (&rest $args)
                (let (($next (or $args (list a1 a2))))
         	 (declare (ignorable $next))
-        	 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+        	 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(number))
+                        $next)))
 
              (next-method-p () nil))
 
@@ -939,7 +969,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a1 a2 a3 a4 1 2 3))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(character))
+                        $next)))
 
 	     (next-method-p () nil))
 
@@ -996,7 +1032,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(number))
+                        $next)))
 
 	     (next-method-p () nil))
 
@@ -1052,7 +1094,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(number))
+                        $next)))
 
 	     (next-method-p () nil))
 
@@ -1115,7 +1163,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a1 :v2 a2 :key123 a3 :v3 a4 :other a5))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(number))
+                        $next)))
 
 	     (next-method-p () nil))
 
@@ -1176,7 +1230,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a1 a2 a3 a4 a5 a6 a7))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(number))
+                        $next)))
 
 	     (next-method-p () nil))
 
@@ -1230,7 +1290,13 @@
      `(flet ((call-next-method (&rest $args)
 	       (let (($next (or $args (list a1 1))))
 		 (declare (ignorable $next))
-		 (apply #'no-next-method (fdefinition ',*current-gf*) ,method $next)))
+		 (apply #'no-next-method
+                        (fdefinition ',*current-gf*)
+                        (find-method%
+                         (fdefinition ',*current-gf*)
+                         'nil
+                         '(number t))
+                        $next)))
 
 	     (next-method-p () nil))
 
