@@ -64,15 +64,20 @@
                        (or (static-overload ',name ',args ',type-list types ,node)
                            (sb-c::give-up-ir1-transform))))))
 
-             (sb-c:deftransform ,name (,lambda-list ,(or type-list specializers) * :policy ,+static-dispatch-policy+ :node ,node)
-               ,(format nil "Inline ~s method ~s" name specializers)
+             ,(multiple-value-bind (gensym-lambda-list bindings)
+                  (gensym-lambda-list lambda-list)
 
-               (let ((*full-arg-list-form* ,(make-reconstruct-arg-list lambda-list))
-                     (*call-args* ,(make-reconstruct-static-arg-list lambda-list))
-                     (,types ,(make-dispatch-type-list required node)))
+                (let ((required (parse-ordinary-lambda-list gensym-lambda-list)))
+                  `(sb-c:deftransform ,name (,gensym-lambda-list ,(or type-list specializers) * :policy ,+static-dispatch-policy+ :node ,node)
+                     ,(format nil "Inline ~s method ~s" name specializers)
 
-                 (or (static-overload ',name nil ',type-list ,types ,node)
-                     (sb-c::give-up-ir1-transform))))))))))
+                     (let ((*full-arg-list-form* ,(make-reconstruct-arg-list gensym-lambda-list))
+                           (*call-args* ,(make-reconstruct-static-arg-list gensym-lambda-list))
+                           (*argument-map* ',bindings)
+                           (,types ,(make-dispatch-type-list required node)))
+
+                       (or (static-overload ',name nil ',type-list ,types ,node)
+                           (sb-c::give-up-ir1-transform))))))))))))
 
 (defun make-dispatch-type-list (args node)
   "Generate a form which generates the argument type list.
@@ -201,6 +206,60 @@
 		 (nil))))
 
       (make-required required))))
+
+(defun gensym-lambda-list (lambda-list)
+  "Replace the variables in a lambda-list with gensyms.
+
+   LAMBDA-LIST: The lambda-list.
+
+   Returns two values:
+
+     1. The new lambda-list with the variables replaced by gensyms.
+
+     2. The list of bindings, as if to LET, binding the original
+        variables to the corresponding gensym'd variables."
+
+  (multiple-value-bind (required optional rest key allow-other-keys aux keyp)
+      (parse-ordinary-lambda-list lambda-list)
+
+    (let ((bindings))
+      (labels
+          ((gensym-arg (arg)
+             (let ((g (gensym (symbol-name arg))))
+               (push (list arg g) bindings)
+               g))
+
+           (wrap-init-form (init)
+             (when init
+               `(symbol-macrolet ,bindings
+                  ,init)))
+
+           (gensym-optional (arg)
+             (destructuring-bind (name init sp) arg
+               (list (gensym-arg name)
+                     (wrap-init-form init)
+                     (when sp (gensym-arg sp)))))
+
+           (gensym-key (arg)
+             (destructuring-bind ((key name) init sp) arg
+               (list (list key (gensym-arg name))
+                     (wrap-init-form init)
+                     (when sp (gensym-arg sp)))))
+
+           (gensym-aux (arg)
+             (destructuring-bind (name init) arg
+               (list (gensym-arg name)
+                     (wrap-init-form init)))))
+
+        (let ((required (mapcar #'gensym-arg required))
+              (optional (mapcar #'gensym-optional optional))
+              (rest (when rest (gensym-arg rest)))
+              (key (mapcar #'gensym-key key))
+              (aux (mapcar #'gensym-aux aux)))
+
+          (values
+           (unparse-lambda-list required optional rest key allow-other-keys aux keyp)
+           bindings))))))
 
 
 ;;; Static Dispatching

@@ -490,6 +490,11 @@
 
 ;;; Static Dispatching
 
+(defvar *argument-map* nil
+  "List of bindings (as if to LET) binding the lambda-list variables
+   to the names of the actual variables storing the arguments passed
+   to the function.")
+
 (define-declaration static-dispatch-inhibit (args)
   "Inhibit static dispatching in an environment.
 
@@ -685,7 +690,8 @@
     `(macrolet ((call-method (,method &optional ,next &environment ,env)
                   (let ((*current-gf* ',name)
                         (*full-arg-list-form* ',*full-arg-list-form*)
-                        (*call-args* ',*call-args*))
+                        (*call-args* ',*call-args*)
+                        (*argument-map* ',*argument-map*))
 
                     (when (consp ,method)
                       (multiple-value-bind (,method ,expandedp)
@@ -903,7 +909,9 @@
 
   (etypecase args
     (null
-     `(let () ,@body))
+     (if *argument-map*
+         `(let ,*argument-map* ,@body)
+         `(let () ,@body)))
 
     (cons
      (handler-case
