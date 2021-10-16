@@ -148,7 +148,9 @@
     (list qualifiers specializers)))
 
 (defun find-method% (gf qualifiers specializers)
-  #+clisp
+  "Same as FIND-METHOD but allows SPECIALIZERS to be a list of
+   symbolic specializers rather than classes."
+
   (find-method
    gf qualifiers
    (mapcar
@@ -160,9 +162,7 @@
         (_
          (find-class specializer nil))))
     specializers)
-   nil)
-
-  #-clisp (find-method gf qualifiers specializers nil))
+   nil))
 
 (defun info-for-method (gf-name method)
   "Return the `METHOD-INFO' object for a method.
