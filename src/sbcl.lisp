@@ -52,7 +52,7 @@
 
            (handler-bind ((style-warning #'muffle-warning))
              ,@(when type-list
-                 `((sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest *) * :policy ,+static-dispatch-policy+ :node ,node)
+                 `((sb-c:deftransform ,name ((&rest ,args) (,@specializers &rest t) * :policy ,+static-dispatch-policy+ :node ,node)
                      ,(format nil "Inline ~s method ~s" name specializers)
 
                      (let ((types
@@ -108,10 +108,10 @@
     (when (or optional key)
       (append specializers
 	      (when optional '(&optional))
-	      (loop for opt in optional collect '*)
-	      (when rest '(&rest *))
+	      (loop for opt in optional collect t)
+	      (when rest '(&rest t))
 	      (when (or key allow-other-keys) '(&key))
-	      (loop for ((keyword)) in key collect `(,keyword *))
+	      (loop for ((keyword)) in key collect `(,keyword t))
 	      (when allow-other-keys '(&allow-other-keys))))))
 
 (defun make-reconstruct-arg-list (lambda-list)
