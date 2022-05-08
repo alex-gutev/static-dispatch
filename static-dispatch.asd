@@ -73,7 +73,7 @@
 		 (:file "next-methods-defs")
 		 (:file "next-methods")
 		 (:file "aux-defs")
-		 (:file "aux")
+		 (:file "aux_")
 		 (:file "compiler-macro")
 		 (:file "method-functions-defs")
 		 (:file "method-functions")
