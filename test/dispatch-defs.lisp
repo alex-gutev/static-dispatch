@@ -50,6 +50,9 @@
 (defmethod add (a b)
   (list a b))
 
+(defmethod add ((a (eql 100)) (b (eql 200)))
+  (list 'number 300))
+
 ;;; Macros
 
 (defmacro pass-through (form)
