@@ -37,8 +37,7 @@
   "Optimization policy at which static dispatching is performed.")
 
 (defun make-static-dispatch (name lambda-list specializers)
-  (let ((specializers (substitute '* 'eql specializers :key #'ensure-car))
-        (type-list (lambda-list->type-list lambda-list specializers))
+  (let ((type-list (lambda-list->type-list lambda-list specializers))
         (required (parse-ordinary-lambda-list lambda-list)))
 
     (with-gensyms (node args types)
